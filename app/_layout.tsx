@@ -46,6 +46,7 @@ export default function RootLayout() {
         <Stack.Screen name="Appointments/CalendarScreen" options={{ headerShown: false }} />
         <Stack.Screen name="Tasks/MilestoneScreen" options={{ headerShown: false }} />
         <Stack.Screen name="Tasks/TaskListScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="Tasks/TaskDetailScreen" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>
   );

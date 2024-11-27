@@ -188,11 +188,11 @@ const MenuScreen = () => {
 
         retrieveToken();
 
-         const backAction = () => true; // Disable back button
-         const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+        //  const backAction = () => true; // Disable back button
+        //  const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
 
-        // Clean up the event listener
-        return () => backHandler.remove();
+        // // Clean up the event listener
+        // return () => backHandler.remove();
     }, [slideAnim]);
 
     const toggleMenu = () => {
@@ -211,6 +211,7 @@ const MenuScreen = () => {
             await AsyncStorage.removeItem('@isLeader');
             await AsyncStorage.removeItem('@haveTeam');
             await AsyncStorage.removeItem('@requestCount');
+            await AsyncStorage.removeItem('@memberid');
             await GoogleSignin.revokeAccess(); // Optional: Revoke access to Google account
             await GoogleSignin.signOut();
             console.log('User signed out');
@@ -241,7 +242,7 @@ const MenuScreen = () => {
         }
     
         router.push({
-            pathname: '../Tasks/MilestoneScreen',
+            pathname: '../Tasks/TaskListScreen',
             params: {
                 courseId: courseDetails.courseId,
                 semesterId: courseDetails.semesterId,
@@ -269,7 +270,9 @@ const MenuScreen = () => {
         router.push({
             pathname: '../Appointments/CalendarScreen',
             params: {
-                teamId:teamId
+                myTeamId:teamId,
+                courseId: courseDetails.courseId,
+                semesterId: courseDetails.semesterId,
             },
         });
     };

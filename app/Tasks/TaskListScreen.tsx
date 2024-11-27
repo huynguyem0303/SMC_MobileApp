@@ -4,6 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import RNPickerSelect from 'react-native-picker-select';
 import DatePicker from 'react-native-date-picker';
+import { useIsFocused } from '@react-navigation/native';
+import moment from 'moment';
+
 interface Task {
     id: string;
     name: string;
@@ -39,6 +42,7 @@ enum ReminderEnum {
 const TaskListScreen = () => {
     const [tasks, setTasks] = useState<{ weekNumber: number, tasks: Task[] }[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [projectId, setProjectId] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
     const [modalVisible, setModalVisible] = useState(false); // State for modal visibility
     const [assignModalVisible, setAssignModalVisible] = useState<{ [key: string]: boolean }>({});
@@ -48,12 +52,14 @@ const TaskListScreen = () => {
     const [taskEndTime, setTaskEndTime] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000));
     const [taskReminder, setTaskReminder] = useState(ReminderEnum.None);
     const [taskPriority, setTaskPriority] = useState(0);
-    const { milestoneId } = useLocalSearchParams();
+    const { courseId, semesterId } = useLocalSearchParams();
     const router = useRouter();
+    const isFocused = useIsFocused();
+    const today = moment();
 
     useEffect(() => {
         fetchTasks();
-    }, [milestoneId]);
+    }, [courseId, semesterId, isFocused]);
 
     const fetchTasks = async () => {
         try {
@@ -61,28 +67,39 @@ const TaskListScreen = () => {
             if (!token) {
                 throw new Error('No token found');
             }
-
-            const response = await fetch(`https://smnc.site/api/ProjectTasks?milestoneId=${milestoneId}&isGroupByWeek=true&orderByStartTime=true`, {
+            const projectResponse = await fetch(`https://smnc.site/api/Projects/CurrentUserProject?courseId=${courseId}&semesterId=${semesterId}`, {
                 headers: {
-                    'accept': '*/*',
+                    'accept': 'text/plain',
                     'Authorization': `Bearer ${token}`,
                 },
             });
 
-            const data = await response.json();
-
-            if (data.status && data.data) {
-                // Sort tasks by priority within each week
-                const sortedTasks = data.data.map((week: { weekNumber: number, tasks: Task[] }) => {
-                    const sortedWeekTasks = week.tasks.sort((a, b) => a.priority - b.priority);
-                    return {
-                        ...week,
-                        tasks: sortedWeekTasks,
-                    };
+            const projectData = await projectResponse.json();
+            if (projectData.status && projectData.data && projectData.data.length > 0) {
+                const projectId = projectData.data[0].id;
+                setProjectId(projectId);
+                const response = await fetch(`https://smnc.site/api/ProjectTasks?projectId=${projectId}&isGroupByWeek=true&orderByStartTime=true`, {
+                    headers: {
+                        'accept': '*/*',
+                        'Authorization': `Bearer ${token}`,
+                    },
                 });
-                setTasks(sortedTasks);
-            } else {
-                setError(data.message || 'Failed to fetch tasks.');
+
+                const data = await response.json();
+
+                if (data.status && data.data) {
+                    // Sort tasks by priority within each week
+                    const sortedTasks = data.data.map((week: { weekNumber: number, tasks: Task[] }) => {
+                        const sortedWeekTasks = week.tasks.sort((a, b) => a.priority - b.priority);
+                        return {
+                            ...week,
+                            tasks: sortedWeekTasks,
+                        };
+                    });
+                    setTasks(sortedTasks);
+                } else {
+                    setError(data.message || 'Failed to fetch tasks.');
+                }
             }
         } catch (error) {
             console.error('Error fetching tasks:', error);
@@ -119,7 +136,7 @@ const TaskListScreen = () => {
                     endTime: taskEndTime.toISOString(),
                     reminder: taskReminder,
                     priority: taskPriority,
-                    milestoneId,
+                    projectId: projectId
                 }),
             });
 
@@ -177,7 +194,7 @@ const TaskListScreen = () => {
                 if (validationErrors) {
                     errorMessage += '\n' + Object.values(validationErrors).flat().join('\n');
                 }
-                Alert.alert('Error', errorMessage);
+                Alert.alert('Error', 'You have assigned this task already');
             }
         } catch (error) {
             Alert.alert('Error', 'An error occurred while assigning the task.');
@@ -193,6 +210,13 @@ const TaskListScreen = () => {
         setAssignModalVisible(prevState => ({ ...prevState, [taskId]: false }));
     };
 
+    const handleDetail = (taskId: string) => {
+        router.push({
+            pathname: '/Tasks/TaskDetailScreen',
+            params: { taskId },
+        });
+    };
+
     const renderAssignModal = (taskId: string) => (
         <Modal
             animationType="slide"
@@ -200,13 +224,17 @@ const TaskListScreen = () => {
             visible={assignModalVisible[taskId] || false}
             onRequestClose={() => closeAssignModal(taskId)}
         >
-            <View style={styles.modalContainer}>
-                <View style={styles.modalContent}>
+            <View style={styles.popupContainer}>
+                <View style={styles.popupContent}>
                     <Text style={styles.modalText}>Assign Task</Text>
                     <Text style={styles.modalDescription}>Are you sure you want to assign this task?</Text>
-                    <View style={styles.buttonContainer}>
-                        <Button title="Cancel" onPress={() => closeAssignModal(taskId)} color="#d9534f" />
-                        <Button title="OK" onPress={() => { closeAssignModal(taskId); handleAssignTask(taskId); }} color="#5cb85c" />
+                    <View style={styles.popupButtonContainer}>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => closeAssignModal(taskId)}>
+                            <Text style={styles.cancelButtonText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.confirmButton} onPress={() => { closeAssignModal(taskId); handleAssignTask(taskId); }}>
+                            <Text style={styles.confirmButtonText}>OK</Text>
+                        </TouchableOpacity>
                     </View>
                 </View>
             </View>
@@ -218,7 +246,7 @@ const TaskListScreen = () => {
             case TaskStatusEnum.NotStarted:
                 return '#808080'; // Gray
             case TaskStatusEnum.InProgress:
-                return '#0000FF'; // Blue
+                return '#FFA500'; // Orange
             case TaskStatusEnum.Completed:
                 return '#008000'; // Green
             case TaskStatusEnum.Postponed:
@@ -263,29 +291,41 @@ const TaskListScreen = () => {
                 {tasks.map((week, index) => (
                     <View key={index} style={styles.weekContainer}>
                         <Text style={styles.weekTitle}>Week {week.weekNumber}</Text>
-                        {week.tasks.map((task: Task) => (
-                            <View key={task.id} style={styles.task}>
-                                <View style={styles.taskDetails}>
-                                    <Text style={styles.taskTitle}>{task.name}</Text>
-                                    <Text style={styles.taskDescription}>
-                                        Done by:
-                                        {task.members.map((member: { name: string }, i: number) =>
-                                            i === 0 ? member.name : `, ${member.name}`).join('')}
-                                    </Text>
-                                </View>
-                                <View style={styles.taskOptionsContainer}>
-                                    <TouchableOpacity onPress={() => openAssignModal(task.id)}>
-                                        <Text style={styles.moreOptions}>...</Text>
-                                    </TouchableOpacity>
-                                    <View style={[styles.statusDot, { backgroundColor: getStatusColor(task.status) }]} />
-                                </View>
-                                {renderAssignModal(task.id)}
-                            </View>
-                        ))}
+                        {week.tasks.map((task) => {
+                            const endTime = moment(task.endTime);
+                            const showAlert = task.status !== TaskStatusEnum.Completed && endTime.diff(today, 'days') <= task.reminder;
+                            return (
+                                <TouchableOpacity key={`task-${task.id}`} onPress={() => handleDetail(task.id)}>
+                                    <View style={styles.task}>
+                                        <View style={styles.taskDetails}>
+                                            <Text style={styles.taskTitle}>{task.name}</Text>
+                                            <Text style={styles.taskDescription}>
+                                                Done by:
+                                                {task.members.map((member, i) =>
+                                                    i === 0 ? member.name : `, ${member.name}`
+                                                ).join('')}
+                                            </Text>
+                                            {showAlert && (
+                                                <Text style={styles.alertText}>
+                                                    Reminder: Task due soon!
+                                                </Text>
+                                            )}
+                                        </View>
+                                        <View style={styles.taskOptionsContainer}>
+                                            <TouchableOpacity onPress={() => openAssignModal(task.id)}>
+                                                <Text style={styles.moreOptions}>...</Text>
+                                            </TouchableOpacity>
+                                            <View style={[styles.statusDot, { backgroundColor: getStatusColor(task.status) }]} />
+                                        </View>
+                                        {renderAssignModal(task.id)}
+                                    </View>
+                                </TouchableOpacity>
+                            );
+                        })}
                     </View>
                 ))}
             </ScrollView>
-            
+
             <Modal
                 animationType="slide"
                 transparent={true}
@@ -405,12 +445,12 @@ const styles = StyleSheet.create({
         marginBottom: 20,
     },
     weekTitle: {
-        marginTop:10,
+        marginTop: 10,
         fontSize: 18,
         fontWeight: 'bold',
         marginBottom: 10,
-        justifyContent:'center',
-        textAlign:'center'
+        justifyContent: 'center',
+        textAlign: 'center'
     },
     task: {
         padding: 16,
@@ -436,6 +476,10 @@ const styles = StyleSheet.create({
     taskDescription: {
         fontSize: 14,
         color: '#666',
+    },
+    alertText: {
+        fontSize: 14,
+        color: 'red',
     },
     taskOptionsContainer: {
         flexDirection: 'row',
@@ -498,17 +542,6 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
         elevation: 5,
     },
-    modalText: {
-        marginBottom: 15,
-        textAlign: "center",
-        fontSize: 18,
-        fontWeight: 'bold',
-    },
-    modalDescription: {
-        fontSize: 16,
-        marginBottom: 20,
-        textAlign: 'center',
-    },
     input: {
         width: '100%',
         height: 40,
@@ -535,6 +568,68 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         marginTop: 20,
     },
+    popupContainer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    popupContent: {
+        width: '80%',
+        backgroundColor: '#fff',
+        padding: 20,
+        borderRadius: 10,
+        alignItems: 'center',
+    },
+    popupButtonContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 20,
+        width: '100%',
+    },
+    confirmButton: {
+        backgroundColor: '#00796b',
+        padding: 10,
+        borderRadius: 5,
+        flex: 1,
+        marginRight: 10,
+        marginLeft: 10,
+        alignItems: 'center',
+    },
+    confirmButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+    },
+    cancelButton: {
+        backgroundColor: '#d9534f',
+        padding: 10,
+        borderRadius: 5,
+        flex: 1,
+        marginLeft: 10,
+        marginRight: 10,
+        alignItems: 'center',
+    },
+    cancelButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+    },
+    modalText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        marginBottom: 15,
+    },
+    modalDescription: {
+        fontSize: 16,
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+
+
 });
 
 const pickerSelectStyles = StyleSheet.create({
