@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   button: {
-    width: '80%', // Match the width of the Google Sign-In button
+    width: 302, // Match the width of the Google Sign-In button
     height: 40, // Fixed height of the button
     backgroundColor: '#00cc00',
     marginBottom: 20,

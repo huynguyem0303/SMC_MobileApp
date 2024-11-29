@@ -220,7 +220,16 @@ const MenuScreen = () => {
             console.error('Error logging out:', error);
         }
     };
-
+    const handleProjectList = () => {
+        router.push({
+          pathname: '../Projects/ProjectListScreen',
+          params: {
+            courseId: courseDetails.courseId,
+            semesterId:courseDetails.semesterId
+          }
+        });
+      };
+      
     const handleMyTeam = () => {
         if (!studentCode) {
             Alert.alert("You need a team to use this function");
@@ -324,7 +333,7 @@ const MenuScreen = () => {
                         </View>
                         <View style={styles.section}>
                             <Text style={styles.sectionTitle}>Project</Text>
-                            <TouchableOpacity style={styles.menuItem} onPress={() => router.push('../Projects/ProjectListScreen')}>
+                            <TouchableOpacity style={styles.menuItem} onPress={() => handleProjectList()}>
                                 <Image source={require('../assets/images/search-project-icon.png')} style={styles.icon} resizeMode="contain" // or 'cover' / 'stretch' based on your requirement 
                                 />
                                 <Text style={styles.menuText}>Find Project</Text>

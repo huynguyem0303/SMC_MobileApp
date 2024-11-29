@@ -2,21 +2,21 @@ import React, { useState } from 'react';
 import {
   GoogleSignin, GoogleSigninButton, statusCodes
 } from '@react-native-google-signin/google-signin';
+import auth from '@react-native-firebase/auth'
 import getToken from '../components/Jwt/getToken';
-import { View, Text, StyleSheet , ActivityIndicator} from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import storeToken from '../components/Jwt/storeToken';
 import fetchAccountData from '../components/fetchAccountData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function () {
-  const [loading, setLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const router = useRouter();
 
   GoogleSignin.configure({
-    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-    webClientId: "972526541482-rmn9q4stgoflejc9g9u2hnm382bgr51g.apps.googleusercontent.com",
+    scopes: ['profile', 'email'],
+    webClientId: "808206442637-2cp9edtms139ck8qltcm6n9oedfk3ocp.apps.googleusercontent.com",
   });
 
   const storeDecodedToken = async (token: any) => {
@@ -32,13 +32,19 @@ export default function () {
     try {
       await GoogleSignin.hasPlayServices();
       const userInfo = await GoogleSignin.signIn();
+      console.log('UserInfo:', userInfo);
+
+      // Correctly extract idToken from userInfo.data
       const idToken = userInfo.data?.idToken;
 
       if (!idToken) {
         await GoogleSignin.signOut();
-        setLoading(false);
+        setErrorMessage('Failed to sign in');
         return;
       }
+
+      const googleCredential = auth.GoogleAuthProvider.credential(idToken);
+      await auth().signInWithCredential(googleCredential);
 
       const response = await fetch(`https://smnc.site/api/Auth/google-login?googleIdToken=${idToken}`, {
         method: 'POST',
@@ -46,81 +52,59 @@ export default function () {
           'Content-Type': 'application/json',
         },
       });
-
+      console.log('idtoken', idToken);
       const data = await response.json();
+      console.log('Response:', response);
+      console.log('API Response:', data);
 
       if (!response.ok) {
         await GoogleSignin.signOut();
-        setErrorMessage(data.errors);
-        setLoading(false);
+        setErrorMessage(data.errors || 'Failed to sign in');
         return;
       }
 
-      const { access_token: accessToken, status, message, errors } = data.data;
+      const { access_token: accessToken, status, errors } = data.data;
 
-      if (status === false) {
+      if (status === 2) {
         await GoogleSignin.signOut();
-        setErrorMessage(errors);
-        setLoading(false);
+        setErrorMessage(errors || 'Failed to sign in');
         return;
       }
-      console.log('accesstoken:', accessToken);
+
+      console.log('AccessToken:', accessToken);
       await storeToken(accessToken);
       const decodedToken = await getToken();
-      console.log('id:', decodedToken.id);
+      console.log('DecodedToken:', decodedToken);
       await fetchAccountData(decodedToken.id);
-      console.log('decodedToken:', decodedToken);
-      setLoading(false);
       router.push("/MenuScreen");
 
     } catch (error: any) {
       await GoogleSignin.signOut();
-      if (error.response && error.response.data) {
-        setErrorMessage(error.response.data.errors);
-      } else {
-        setErrorMessage('An unexpected error occurred during sign-in.');
-      }
-      handleSignInError(error);
-      setLoading(false);
-    }
-  };
-
-
-  const handleSignInError = (error: any) => {
-    switch (error.code) {
-      case statusCodes.SIGN_IN_CANCELLED:
+      console.error('Sign-In Error:', error);
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
         setErrorMessage("User cancelled the login flow");
-        console.log("User cancelled the login flow");
-        break;
-      case statusCodes.IN_PROGRESS:
+      } else if (error.code === statusCodes.IN_PROGRESS) {
         setErrorMessage("Operation (e.g. sign in) is in progress already");
-        console.log("Operation (e.g. sign in) is in progress already");
-        break;
-      case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         setErrorMessage("Play services not available or outdated");
-        console.log("Play services not available or outdated");
-        break;
-      default:
-        setErrorMessage('An unexpected error occurred during sign-in.');
-        console.log("An unexpected error occurred:", error);
+      } else {
+        setErrorMessage(error.message || 'An unexpected error occurred during sign-in.');
+      }
     }
   };
 
   return (
     <View style={styles.container}>
-      {loading ? (
-        <ActivityIndicator size="large" color="#0000ff" />
-      ) : (
-        <>
 
-      <GoogleSigninButton
-        size={GoogleSigninButton.Size.Wide}
-        color={GoogleSigninButton.Color.Dark}
-        onPress={handleSignIn}
-      />
-      {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
-      </>
-      )}
+    
+        <GoogleSigninButton
+          size={GoogleSigninButton.Size.Wide}
+          color={GoogleSigninButton.Color.Dark}
+          onPress={handleSignIn}
+        />
+        {errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
+ 
+
     </View>
   );
 };

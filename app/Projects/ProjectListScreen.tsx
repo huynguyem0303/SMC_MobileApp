@@ -1,19 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Button } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter,useLocalSearchParams } from 'expo-router';
 import RNPickerSelect from 'react-native-picker-select';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
 type Project = {
   id: string;
   projectName: string;
   category: string;
-  semesterAndCourse: { semester: string; course: string }[];
+  semesterAndCourse: { semester: string; course: string };
   mentorsAndLecturers: { name: string; roleType: string }[];
   memberWantedStatus: boolean;
-  memberWanted: string;
+  memberWanted: string | null;
 };
 
 const ProjectListScreen = () => {
+  const { semesterId,courseId} = useLocalSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,42 +33,50 @@ const ProjectListScreen = () => {
   useEffect(() => {
     filterProjects();
   }, [selectedCategory, selectedCourse, selectedMemberWanted, projects, currentPage]);
-
-  const fetchProjects = async () => {
+  semesterId
+  const fetchProjects = async () => { 
     try {
-        const token = await AsyncStorage.getItem('@userToken');
-        const response = await fetch('https://smnc.site/api/Projects?PageSize=50', {
-            method: 'GET',
-            headers: {
-                'accept': 'text/plain',
-              Authorization: `Bearer ${token}`,
-            }
-          });
+      const token = await AsyncStorage.getItem('@userToken');
+      const response = await fetch(`https://smnc.site/api/Projects?PageSize=50&courseId=${courseId}&semesterId=${semesterId}`, {
+        method: 'GET',
+        headers: {
+          'accept': 'text/plain',
+          Authorization: `Bearer ${token}`,
+        },
+      });
       const data = await response.json();
       setProjects(data.data.data);
+      console.log(data.data.data);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching project data:', error);
       setLoading(false);
     }
   };
-
   const filterProjects = () => {
     let filtered = projects.filter(project => project.memberWantedStatus);
+
     if (selectedCategory) {
       filtered = filtered.filter(project => project.category === selectedCategory);
     }
+
     if (selectedCourse) {
-      filtered = filtered.filter(project => project.semesterAndCourse.some(sc => {
+      filtered = filtered.filter(project => {
+        const sc = project.semesterAndCourse;
         if (selectedCourse === 'Others') {
           return sc.course !== 'EXE101' && sc.course !== 'EXE201';
         }
         return sc.course === selectedCourse;
-      }));
+      });
     }
+
     if (selectedMemberWanted) {
-      filtered = filtered.filter(project => project.memberWanted.toLowerCase().includes(selectedMemberWanted.toLowerCase()));
+      filtered = filtered.filter(project => {
+        const memberWantedArray = project.memberWanted ? project.memberWanted.split(',').map(item => item.trim().toLowerCase()).filter(Boolean) : [];
+        return memberWantedArray.includes(selectedMemberWanted.toLowerCase());
+      });
     }
+
     const startIndex = (currentPage - 1) * projectsPerPage;
     const paginatedProjects = filtered.slice(startIndex, startIndex + projectsPerPage);
     setFilteredProjects(paginatedProjects);
@@ -75,34 +85,56 @@ const ProjectListScreen = () => {
   const renderProjectItem = ({ item }: { item: Project }) => {
     const mentors = item.mentorsAndLecturers.filter((person) => person.roleType === 'Mentor');
     const lecturers = item.mentorsAndLecturers.filter((person) => person.roleType === 'Lecturer');
-
+    const memberWantedArray = item.memberWanted ? item.memberWanted.split(',').map(role => role.trim()).filter(Boolean) : [];
+    const { semester, course } = item.semesterAndCourse;
+  
     return (
       <View style={styles.projectContainer}>
         <View style={styles.projectDetails}>
           <Text style={styles.projectTitle}>{item.projectName || 'No Project Name'}</Text>
+          
           <View style={styles.inlineTextWrap}>
             <Text style={styles.projectSectionTitle}>Lecturers:</Text>
             {lecturers.map((lecturer, index) => (
               <Text key={index} style={styles.personName}>{lecturer.name}</Text>
             ))}
           </View>
+          
           <View style={styles.inlineTextWrap}>
             <Text style={styles.projectSectionTitle}>Mentors:</Text>
             {mentors.map((mentor, index) => (
               <Text key={index} style={styles.personName}>{mentor.name}</Text>
             ))}
           </View>
+          
+          <View style={styles.inlineTextWrap}>
+            <Text style={styles.projectSectionTitle}>Course:</Text>
+            <Text style={styles.personName}>{course}</Text>
+          </View>
+          
+          <View style={styles.inlineTextWrap}>
+            <Text style={styles.projectSectionTitle}>Category:</Text>
+            <Text style={styles.personName}>{item.category}</Text>
+          </View>
+          
           <View style={styles.inlineTextWrap}>
             <Text style={styles.projectSectionTitle}>Member Wanted:</Text>
-            <Text style={styles.personName}>{item.memberWanted}</Text>
+            {memberWantedArray.length > 0 ? (
+              memberWantedArray.map((role, index) => (
+                <Text key={index} style={styles.personName}>{role}</Text>
+              ))
+            ) : (
+              <Text style={styles.personName}>No roles listed</Text>
+            )}
           </View>
+          
           <TouchableOpacity style={styles.detailButton} onPress={() => handleDetail(item)}>
-          <Text style={styles.detailButtonText}>Check Detail</Text>
-        </TouchableOpacity>
+            <Text style={styles.detailButtonText}>Check Detail</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
-  };
+  };  
   const handleDetail = (project: Project) => {
     router.push(`/Projects/ProjectDetailScreen?projectId=${project.id}`);
   };
@@ -117,11 +149,9 @@ const ProjectListScreen = () => {
       setCurrentPage(currentPage - 1);
     }
   };
-
   if (loading) {
     return <ActivityIndicator size="large" color="#0000ff" />;
   }
-
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -157,52 +187,39 @@ const ProjectListScreen = () => {
         </View>
         <View style={styles.pickerBorder}>
           <RNPickerSelect
-            onValueChange={(value) => setSelectedCourse(value)}
+            onValueChange={(value) => setSelectedMemberWanted(value)}
             items={[
-              { label: 'EXE101', value: 'EXE101' },
-              { label: 'EXE201', value: 'EXE201' },
-              { label: 'Others', value: 'Others' },
+              { label: 'FE', value: 'FE' },
+              { label: 'BE', value: 'BE' },
+              { label: 'Mobile', value: 'Mobile' },
+              { label: 'Web Design', value: 'Web Design' },
+              { label: 'Marketing', value: 'Marketing' },
             ]}
-            placeholder={{ label: 'Select a course', value: '' }}
+            placeholder={{ label: 'Select a department wanted', value: null }}
             style={pickerSelectStyles}
-                    />
-                </View>
-                <View style={styles.pickerBorder}>
-                    <RNPickerSelect
-                        onValueChange={(value) => setSelectedMemberWanted(value)}
-                        items={[
-                            { label: 'FE', value: 'FE' },
-                            { label: 'BE', value: 'BE' },
-                            { label: 'Mobile', value: 'Mobile' },
-                            { label: 'Web Design', value: 'Web Design' },
-                            { label: 'Marketing', value: 'Marketing' },
-                        ]}
-                        placeholder={{ label: 'Select a department wanted', value: null }}
-                        style={pickerSelectStyles}
-                    />
-                </View>
-            </View>
-            {filteredProjects.length > 0 ? (
-                <>
-                    <FlatList
-                        data={filteredProjects}
-                        renderItem={renderProjectItem}
-                        keyExtractor={(item) => item.id}
-                        contentContainerStyle={styles.listContentContainer}
-                    />
-                    <View style={styles.paginationContainer}>
-                        <Button title="Previous" onPress={handlePreviousPage} disabled={currentPage === 1} />
-                        <Text style={styles.paginationText}>Page {currentPage}</Text>
-                        <Button title="Next" onPress={handleNextPage} disabled={currentPage >= Math.ceil(projects.length / projectsPerPage)} />
-                    </View>
-                </>
-            ) : (
-                <Text style={styles.noProjectsText}>Project not found</Text>
-            )}
+          />
         </View>
-    );
+      </View>
+      {filteredProjects.length > 0 ? (
+        <>
+                    <FlatList
+            data={filteredProjects}
+            renderItem={renderProjectItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContentContainer}
+          />
+          <View style={styles.paginationContainer}>
+            <Button title="Previous" onPress={handlePreviousPage} disabled={currentPage === 1} />
+            <Text style={styles.paginationText}>Page {currentPage}</Text>
+            <Button title="Next" onPress={handleNextPage} disabled={currentPage >= Math.ceil(projects.length / projectsPerPage)} />
+          </View>
+        </>
+      ) : (
+        <Text style={styles.noProjectsText}>Project not found</Text>
+      )}
+    </View>
+  );
 };
-
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -308,7 +325,6 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     }
 });
-
 const pickerSelectStyles = StyleSheet.create({
     inputIOS: {
         fontSize: 16,
@@ -320,7 +336,6 @@ const pickerSelectStyles = StyleSheet.create({
         color: 'black',
         paddingRight: 30,
         height: 40
-
     },
     inputAndroid: {
         fontSize: 16,
@@ -335,6 +350,4 @@ const pickerSelectStyles = StyleSheet.create({
 
     },
 });
-
-
 export default ProjectListScreen;

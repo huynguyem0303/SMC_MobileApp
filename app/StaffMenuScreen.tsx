@@ -89,18 +89,12 @@ const StaffMenuScreen = () => {
                     </View>
                     <ScrollView style={styles.scrollView}>
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Event</Text>
+                            <Text style={styles.sectionTitle}>Checking Event Attendance</Text>
                             <TouchableOpacity style={styles.menuItem} onPress={() => router.push('../Events/QrScanScreen')}>
-                                <Image source={require('../assets/images/qr.png')} style={styles.icon} />
-                                <Text style={styles.menuText}>Check QR</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.menuItem} >
-                                <Image source={require('../assets/images/google-logo.png')} style={styles.icon} />
-                                <Text style={styles.menuText}>Check Attendance</Text>
+                                {/* <Image source={require('../assets/images/qr.png')} style={styles.icon} /> */}
+                                <Text style={styles.menuText}>Scan QR</Text>
                             </TouchableOpacity>
                         </View>
-
-
                     </ScrollView>
                 </Animated.View>
             </View>
