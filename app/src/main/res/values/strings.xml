@@ -1,0 +1,7 @@
+<resources>
+  <string name="app_name">SMC_MobileApp</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
+  <string name="expo_system_ui_user_interface_style" translatable="false">automatic</string>
+  <string name="server_client_id">972526541482-njfbnkj2g3jp0fi6cp09ptpn3h8s1j3o.apps.googleusercontent.com</string>
+</resources>
