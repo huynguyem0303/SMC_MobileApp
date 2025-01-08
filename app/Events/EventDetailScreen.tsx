@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Alert,Modal } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import getToken from '../../components/Jwt/getToken';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 type Event = {
     title: string;
     description: string;
@@ -34,6 +34,7 @@ const EventDetailScreen = () => {
     const [userId, setUserId] = useState<string | null>(null);
     const [studentId, setStudentId] = useState<string | null>(null);
     const [confirmVisible, setConfirmVisible] = useState(false);
+    const [attendanceStatus, setAttendanceStatus] = useState<number | null>(null);
     useEffect(() => {
         if (id) {
             fetchEventDetails(id.toString());
@@ -58,12 +59,19 @@ const EventDetailScreen = () => {
             console.log('Error retrieving token: ', error);
         }
     };
+    useEffect(() => {
+        if (id && studentId) {
+            fetchAttendanceStatus();
+        }
+    }, [id, studentId]);
     const fetchStudentId = async (userId: string) => {
         try {
+            const token = await AsyncStorage.getItem('@userToken');
             const response = await fetch(`https://smnc.site/api/Account/${userId}`, {
                 method: 'GET',
                 headers: {
                     'accept': '*/*',
+                    'Authorization': `Bearer ${token}`,
                 },
             });
             const data = await response.json();
@@ -72,7 +80,42 @@ const EventDetailScreen = () => {
             console.error('Error fetching student ID:', error);
         }
     };
-
+    const fetchAttendanceStatus = async () => {
+        try {
+            const storedId = await AsyncStorage.getItem('@id');
+            if (!storedId) {
+                console.error('Stored ID is null');
+                return;
+            }
+            const studentId = JSON.parse(storedId);
+            const token = await AsyncStorage.getItem('@userToken');
+    
+            const response = await fetch(`https://smnc.site/api/StudentAttendance?StudentId=${studentId}&EventId=${id}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/plain',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+            console.log("stuid", studentId);
+            console.log("eventid", id);
+            const data = await response.json();
+    
+            if (data.status) {
+                const attendance = data.data.data[0]; // Assuming you want the first entry
+                if (attendance) {
+                    setAttendanceStatus(attendance.status);
+                } else {
+                    setAttendanceStatus(null); // No attendance data available
+                }
+            } else {
+                console.error(data.message);
+            }
+        } catch (error) {
+            console.error('Error fetching attendance status:', error);
+        }
+    };
+    
     const fetchEventDetails = async (eventId: string) => {
         try {
             const response = await fetch(`https://smnc.site/api/Events/${eventId}`);
@@ -88,6 +131,7 @@ const EventDetailScreen = () => {
     const handleRegister = async () => {
          setConfirmVisible(false);
         if (!id || !studentId || !userId) return;
+        console.log(id);
 
         try {
             const attendanceResponse =await registerAttendance(id.toString(), studentId);
@@ -102,10 +146,12 @@ const EventDetailScreen = () => {
                     return;
                 }
             }
+            const token = await AsyncStorage.getItem('@userToken');
             const response = await fetch(`https://smnc.site/api/Events/${id}/Register`, {
                 method: 'PATCH',
                 headers: {
                     'accept': '*/*',
+                    'Authorization': `Bearer ${token}`,
                 },
             });
 
@@ -124,11 +170,13 @@ const EventDetailScreen = () => {
 
     const registerAttendance = async (eventId: string, studentId: string): Promise<{ ok: boolean }> => {
         try {
+            const token = await AsyncStorage.getItem('@userToken');
             const response = await fetch('https://smnc.site/api/StudentAttendance', {
                 method: 'POST',
                 headers: {
                     'accept': '*/*',
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
                 },
                 body: JSON.stringify({
                     studentId,
@@ -139,7 +187,6 @@ const EventDetailScreen = () => {
             });
     
             if (response.ok) {
-                Alert.alert('Attendance Registered', 'Your attendance has been successfully registered.');
             } else {
                 const errorResponse = await response.json();
                 if (errorResponse.errors && errorResponse.errors.includes('This attendance has already existed.')) {
@@ -161,10 +208,12 @@ const EventDetailScreen = () => {
 
     const generateQrCode = async (eventId: string, userId: string,studentId: string): Promise<{ ok: boolean }> => {
         try {
+            const token = await AsyncStorage.getItem('@userToken');
             const response = await fetch(`https://smnc.site/api/Events/${eventId}/GenerateQrCode?studentId=${studentId}&accountId=${userId}`, {
                 method: 'GET',
                 headers: {
                     'accept': '*/*',
+                    'Authorization': `Bearer ${token}`,
                 },
             });
     
@@ -248,14 +297,31 @@ const EventDetailScreen = () => {
                             <Text style={styles.time}>Location: </Text>
                             <Text style={styles.eventLocation}>{event.location}</Text>
                         </View>
-                        <Text style={styles.eventFullDescription}>{event.description}</Text>
+                       
+                    </View>
+                </View>
+                <Text style={styles.eventFullDescription}>{event.description}</Text>
                         <Text style={styles.eventTag}>{event.tag}</Text>
                         <Text style={styles.eventRegistered}>Registered: {event.registeredAmount}</Text>
+                        {attendanceStatus !== null && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={styles.eventLocation}>Attendance: </Text>
+                        <Text
+                            style={
+                                attendanceStatus === 0
+                                    ? styles.statusAbsent
+                                    : attendanceStatus === 1
+                                    ? styles.statusPresent
+                                    : styles.eventLocation
+                            }
+                        >
+                            {attendanceStatus === 0 ? 'Absent' : attendanceStatus === 1 ? 'Present' : 'Loading...'}
+                        </Text>
+                    </View>
+                )}
                         <TouchableOpacity style={styles.registrationButton} onPress={() => setConfirmVisible(true)}>
                             <Text style={styles.registrationButtonText}>Register Now</Text>
                         </TouchableOpacity>
-                    </View>
-                </View>
             </ScrollView>
 
             {/* Confirmation Popup */}
@@ -300,7 +366,7 @@ const styles = StyleSheet.create({
         left: 5,
     },
     backButtonText: {
-        fontSize: 33,
+        fontSize: 40,
         color: '#fff',
     },
     inlineContainer: {
@@ -426,6 +492,15 @@ const styles = StyleSheet.create({
         marginTop: 20,
         width: '100%',
     },
+    statusAbsent: {
+        marginBottom: 10,
+        color: 'red',
+    },
+    statusPresent: {
+        marginBottom: 10,
+        color: 'green',
+    }
+
 });
 
 export default EventDetailScreen;

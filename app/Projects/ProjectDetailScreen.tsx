@@ -84,23 +84,37 @@ const ProjectDetailScreen = () => {
   const handleJoinTeam = async () => {
     if (!projectDetail || !userToken) return;
 
+    // Ensure the reason is not empty
     if (reason.trim() === '') {
-      Alert.alert('Input Required', 'Please enter your reason for joining the team.');
-      return;
+        Alert.alert('Input Required', 'Please enter your reason for joining the team.');
+        return;
+    }
+
+    // Validate the length (not exceeding 200 words)
+    const wordCount = reason.trim().split(/\s+/).length;
+    if (wordCount > 200) {
+        Alert.alert('Input Too Long', 'Your reason for joining the team should not exceed 200 words.');
+        return;
+    }
+    // Validate that the reason doesn't contain any special characters
+    const specialCharPattern = /[^a-zA-Z0-9\s]/;
+    if (specialCharPattern.test(reason)) {
+        Alert.alert('Invalid Characters', 'Your reason should not contain any special characters.');
+        return;
     }
     const value = await AsyncStorage.getItem('@haveTeam');
     if (value !== null) { // Value was found, parse it as needed 
-      const haveTeam = JSON.parse(value);
-      if (haveTeam) {
-        Alert.alert('Error', 'You already have a team ');
-        return;
-      }
+        const haveTeam = JSON.parse(value);
+        if (haveTeam) {
+            Alert.alert('Error', 'You already have a team.');
+            return;
+        }
     }
     const requestBody = {
       type: 0,
       teamId: projectDetail.team.teamId,
       receiverId: null,
-      reason: reason, // The text of the input
+      Comment: reason, // The text of the input
     };
 
     try {
@@ -249,7 +263,7 @@ const styles = StyleSheet.create({
     left: 5,
   },
   backButtonText: {
-    fontSize: 33,
+    fontSize: 40,
     color: '#fff',
   },
   joinButton: {

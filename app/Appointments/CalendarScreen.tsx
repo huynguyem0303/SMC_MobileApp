@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, Linking, ActivityIndicator } from 'react-native';
 import moment from 'moment';
-import { useRouter, useLocalSearchParams } from 'expo-router'; // Adjust this import if you are not using expo-router
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Event {
@@ -12,8 +12,9 @@ interface Event {
     status: number;
     id: string;
     creatorId: string;
-    creatorName: string; // Ensured this is always a string
-    teamId:string
+    creatorName: string;
+    teamId: string;
+    isDeleted: boolean
 }
 
 interface EventsMap {
@@ -27,40 +28,44 @@ interface MentorOrLecturer {
     description: string;
 }
 
+enum AppointmentSlotStatus {
+    Available = 0,
+    Scheduled,
+    InProgress,
+    Completed,
+    Cancelled,
+    Absent
+}
+
 const CalendarScreen = () => {
     const router = useRouter();
     const { myTeamId, courseId, semesterId } = useLocalSearchParams();
-    const [currentWeek, setCurrentWeek] = useState(moment().startOf('week').add(1, 'day'));
-    const [today, setToday] = useState<number>(moment().day()); // Use moment().day() to get day of the week as a number (0 for Sunday, 6 for Saturday)
-    const [selectedDay, setSelectedDay] = useState<number>(today === 0 ? 7 : today + 1); // Initialize with today (Monday is 1 and Saturday is 7)
-    const [events, setEvents] = useState<EventsMap>({}); // State to store API events
-    const [isLeader, setIsLeader] = useState<boolean>(false); // State to store if the user is a leader
-    const [modalVisible, setModalVisible] = useState<boolean>(false); // State to control modal visibility
-    const [confirmVisible, setConfirmVisible] = useState<boolean>(false); // State to control confirm modal visibility
-    const [cancelVisible, setCancelVisible] = useState<boolean>(false); // State to control confirm modal visibility
-    const [selectedEvent, setSelectedEvent] = useState<{ note: string, meetingAddress: string, id: string, status: number, creatorName: string } | null>(null); // State to store selected event details
-    const [mentorId, setMentorId] = useState<string | null>(null); // State to store mentor ID
-    const [lecturerId, setLecturerId] = useState<string | null>(null); // State to store lecturer ID
-    const [project, setProject] = useState<any>(null); // State to store project details
+    const [currentWeek, setCurrentWeek] = useState(moment().startOf('isoWeek'));
+    const [today, setToday] = useState<number>(moment().isoWeekday());
+    const [selectedDay, setSelectedDay] = useState<number>(moment().isoWeekday());
+    const [events, setEvents] = useState<EventsMap>({});
+    const [isLeader, setIsLeader] = useState<boolean>(false);
+    const [modalVisible, setModalVisible] = useState<boolean>(false);
+    const [confirmVisible, setConfirmVisible] = useState<boolean>(false);
+    const [cancelVisible, setCancelVisible] = useState<boolean>(false);
+    const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+    const [mentorIds, setMentorIds] = useState<string[]>([]); 
+    const [lecturerIds, setLecturerIds] = useState<string[]>([]);
+    const [project, setProject] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [attendanceStatus, setAttendanceStatus] = useState<number | null>(null);
 
     const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-    const getEventDays = (data: EventsMap): number[] => {
-        return Object.keys(data).map(day => {
-            const parsedDay = moment(day, "dddd YYYY-MM-DD");
-            return parsedDay.isoWeekday(); // Use isoWeekday to get Monday as 1 and Sunday as 7
-        });
-    };
 
     const fetchProjectDetails = async () => {
         try {
             const token = await AsyncStorage.getItem('@userToken');
-
+    
             if (!token) {
                 Alert.alert('No token found, please login.');
                 return;
             }
-
+    
             const response = await fetch(`https://smnc.site/api/Projects/CurrentUserProject?courseId=${courseId}&semesterId=${semesterId}`, {
                 method: 'GET',
                 headers: {
@@ -68,21 +73,28 @@ const CalendarScreen = () => {
                     'Authorization': `Bearer ${token}`,
                 },
             });
-
+    
             const data = await response.json();
-
-            if (data.status && data.data.length > 0) {
-                const projectData = data.data[0]; // Assuming we're interested in the first project
-                setProject(projectData); // Set the project state
-
-                // Extract mentorId and lecturerId
+    
+            if (data.status && data.data.data.length > 0) {
+                const projectData = data.data.data[0];
+                setProject(projectData);
+    
+                const mentors: string[] = [];
+                const lecturers: string[] = [];
+    
                 projectData.mentorsAndLecturers.forEach((mentor: MentorOrLecturer) => {
                     if (mentor.roleType === 'Mentor') {
-                        setMentorId(mentor.accountId);
+                        mentors.push(mentor.accountId);
                     } else if (mentor.roleType === 'Lecturer') {
-                        setLecturerId(mentor.accountId);
+                        lecturers.push(mentor.accountId);
                     }
                 });
+    
+                setMentorIds(mentors);
+                setLecturerIds(lecturers);
+                // console.log(mentorIds);
+                // console.log(lecturerIds);
             } else {
                 console.error('Failed to fetch project details');
             }
@@ -91,105 +103,263 @@ const CalendarScreen = () => {
         }
     };
 
-    const fetchEvents = async (project: any) => {
+
+    const fetchEvents = async (project: any, startTime: string, endTime: string) => {
         try {
             const token = await AsyncStorage.getItem('@userToken');
             const leaderStatus = await AsyncStorage.getItem('@isLeader');
             setIsLeader(leaderStatus === 'true');
+            setEvents({});
     
             if (!token) {
                 Alert.alert('No token found, please login.');
                 return;
             }
     
-            if (!mentorId || !lecturerId) {
-                console.error('Mentor ID or Lecturer ID is missing');
+            if (mentorIds.length === 0 || lecturerIds.length === 0) {
+                console.error('Mentor IDs or Lecturer IDs are missing');
                 return;
             }
     
-            // Fetch events with mentorId
-            let response = await fetch('https://smnc.site/api/AppointmentSlots/Search', {
-                method: 'POST',
-                headers: {
-                    'accept': '*/*',
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    startTime: moment().startOf('week').format(),
-                    endTime: moment().endOf('week').format(),
-                    creatorId: mentorId, // Use creatorId for mentor
-                }),
-            });
+            const fetchEventsForId = (id: string) => {
+                return fetch('https://smnc.site/api/AppointmentSlots/Search', {
+                    method: 'POST',
+                    headers: {
+                        'accept': '*/*',
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        startTime,
+                        endTime,
+                        creatorId: id,
+                    }),
+                });
+            };
     
-            let data = await response.json();
-            // console.log('Mentor Response Data:', data); // Log the response for debugging
+            const mentorPromises = mentorIds.map(fetchEventsForId);
+            const lecturerPromises = lecturerIds.map(fetchEventsForId);
     
-            if (data && data.data) {
-                const eventsWithNames = Object.keys(data.data).reduce<EventsMap>((acc, key) => {
-                    
-                    acc[key] = data.data[key].filter((event: Event) => event.teamId === myTeamId || event.teamId === null)
-                    .map((event: Event) => {
-                        const mentorOrLecturer = project.mentorsAndLecturers.find((mentor: MentorOrLecturer) => mentor.accountId === event.creatorId);
-                        return {
-                            ...event,
-                            creatorName: mentorOrLecturer ? mentorOrLecturer.name : 'Unknown'
-                        };
-                    });
-                    return acc;
-                }, {});
+            const responses = await Promise.all([...mentorPromises, ...lecturerPromises]);
+            const data = await Promise.all(responses.map(response => response.json()));
     
-                setEvents(prevEvents => ({ ...prevEvents, ...eventsWithNames })); // Merge events without filtering
-            } else {
-                console.error('Unexpected data format for mentor events:', data);
-            }
+            const mergeEvents = (dataArray: any[]) => {
+                dataArray.forEach(data => {
+                    if (data && data.data) {
+                        const eventsWithNames = Object.keys(data.data).reduce<EventsMap>((acc, key) => {
+                            acc[key] = data.data[key].filter((event: Event) => !event.isDeleted && (event.teamId === myTeamId || event.teamId === null))
+                                .map((event: Event) => {
+                                    const mentorOrLecturer = project.mentorsAndLecturers.find((mentor: MentorOrLecturer) => mentor.accountId === event.creatorId);
+                                    return {
+                                        ...event,
+                                        creatorName: mentorOrLecturer ? mentorOrLecturer.name : 'Unknown',
+                                    };
+                                });
+                            return acc;
+                        }, {});
     
-            // Fetch events with lecturerId
-            response = await fetch('https://smnc.site/api/AppointmentSlots/Search', {
-                method: 'POST',
-                headers: {
-                    'accept': '*/*',
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    startTime: moment().startOf('week').format(),
-                    endTime: moment().endOf('week').format(),
-                    creatorId: lecturerId, // Use creatorId for lecturer
-                }),
-            });
+                        setEvents(prevEvents => ({ ...prevEvents, ...eventsWithNames }));
+                        
+                    } else {
+                        console.error('Unexpected data format:', data);
+                    }
+                });
+            };
     
-            data = await response.json();
-            // console.log('Lecturer Response Data:', data); // Log the response for debugging
-            if (data && data.data) {
-                const eventsWithNames = Object.keys(data.data).reduce<EventsMap>((acc, key) => {
-                    acc[key] = data.data[key].filter((event: Event) => event.teamId === myTeamId || event.teamId === null)
-                    .map((event: Event) => {
-                        const mentorOrLecturer = project.mentorsAndLecturers.find((mentor: MentorOrLecturer) => mentor.accountId === event.creatorId);
-                        return {
-                            ...event,
-                            creatorName: mentorOrLecturer ? mentorOrLecturer.name : 'Unknown'
-                        };
-                    });
-                    return acc;
-                }, {});
-    
-                setEvents(prevEvents => ({ ...prevEvents, ...eventsWithNames })); // Merge events without filtering
-                console.log(events)
-                console.log(myTeamId)
-            } else {
-                console.error('Unexpected data format for lecturer events:', data);
-            }
-    
-            // Determine the earliest event day and set the selected day accordingly
-            if (data && data.data) {
-                const eventDays = getEventDays(data.data);
-                const earliestDay = Math.min(...eventDays);
-                setSelectedDay(today); // Adjust to match Monday (1) to Sunday (7)
-            }
+            mergeEvents(data);
+            // console.log('Events after merging:', events);
         } catch (error) {
             console.error('Error fetching appointments:', error);
+        } finally {
+            setLoading(false);
+            // console.log('Final events state:', events);
         }
+    };
+    
+  
+
+
+    const handleAttendCancel = async (scheduleAppointment: boolean) => {
+        if (selectedEvent) {
+            const startDate = new Date(selectedEvent.startTime);
+
+            if (startDate < new Date()) {
+                Alert.alert('Error', "The appointment slot can't be scheduled when it's in the past or not available.");
+                return;
+            }
+
+            try {
+                const token = await AsyncStorage.getItem('@userToken');
+                const response = await fetch(`https://smnc.site/api/AppointmentSlots/${selectedEvent.id}/ScheduleAppointment?teamId=${myTeamId}&scheduleAppointment=${scheduleAppointment}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'accept': '*/*',
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                const data = await response.json();
+
+                if (!data.status && data.errors && data.errors.includes("The appointment slot can't be scheduled when it's in the past or not available.")) {
+                    Alert.alert('Error', "The appointment slot can't be scheduled when it's in the past or not available.");
+                } else if (data.status) {
+                    Alert.alert('Success', 'The appointment has been updated successfully.');
+                } else {
+                    Alert.alert('Error', data.message );
+                }
+
+                setModalVisible(false);
+                setConfirmVisible(false);
+                setCancelVisible(false);
+
+                const startTime = currentWeek.startOf('isoWeek').format();
+                const endTime = currentWeek.endOf('isoWeek').format();
+                fetchEvents(project, startTime, endTime);
+
+            } catch (error) {
+                console.error('Error updating event:', error);
+                Alert.alert('Error', 'There was an error updating the appointment.');
+            }
+        }
+    };
+    const handlePress = async (id: any) => {
+        try {
+            // Retrieve studentId from AsyncStorage
+            const storedId = await AsyncStorage.getItem('@id');
+            const studentId = storedId ? JSON.parse(storedId) : null;
+            console.log(studentId);
+            if (!studentId) {
+                Alert.alert('Error', 'Student ID not found');
+                return;
+            }
+
+            // Perform the API call
+            const token = await AsyncStorage.getItem('@userToken');
+            const response = await fetch(`https://smnc.site/api/AppointmentSlots/${id}/StudentAttendance?studentId=${studentId}`, {
+                method: 'PUT',
+                headers: {
+                    'accept': '*/*',
+                    'Authorization': `Bearer ${token}`, // Add your token here
+                }
+            });
+
+            if (response.ok) {
+                if (selectedEvent?.meetingAddress) {
+                    Linking.openURL(selectedEvent?.meetingAddress);
+                } else {
+                    Alert.alert('Error', 'Open URL failed');
+                }
+            } else {
+                Alert.alert('Error', 'Join meeting failed');
+            }
+        } catch (error) {
+            console.error(error);
+            Alert.alert('Error', 'An unexpected error occurred');
+        }
+    };
+    const getAttendanceStatus = async (studentId: string, slotId: string) => {
+        try {
+          const token = await AsyncStorage.getItem('@userToken');
+          const response = await fetch(`https://smnc.site/api/StudentAttendance?StudentId=${studentId}&SlotId=${slotId}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'text/plain',
+              'Authorization': `Bearer ${token}`,
+            },
+          });
+      
+          const data = await response.json();
+          
+          // Logging the response data for debugging
+          console.log('API Response:', data);
+      
+          if (data && data.status) {
+            const attendance = data.data.data[0]; // Adjusted to navigate nested data structure
+            setAttendanceStatus(attendance.status);
+          } else {
+            console.error('Error:', data ? data.message : 'No data received');
+          }
+        } catch (error) {
+          console.error('Error fetching attendance status:', error);
+        }
+      };
+    const getEventColor = (status: number) => {
+        switch (status) {
+            case 0: return '#6699FF'; // Available
+            case 1: return '#F4A261'; // Scheduled #FFA500
+            case 2: return '#FFD700'; // InProgress
+            case 3: return '#66CC66'; // Completed
+            case 4: return '#FF4500'; // Cancelled
+            case 5: return '#808080'; // Absent
+            default: return '#000000'; // Default color
+        }
+    };
+
+    const generateTimeSlots = () => {
+        const times: { key: string }[] = [];
+        const startHour = 7;
+        const endHour = 17;
+        const incrementMinutes = 30;
+
+        for (let i = startHour * 60; i < endHour * 60 + incrementMinutes; i += incrementMinutes) {
+            const startHour = Math.floor(i / 60);
+            const startMinutes = i % 60;
+            const endHour = Math.floor((i + incrementMinutes) / 60);
+            const endMinutes = (i + incrementMinutes) % 60;
+            const start = `${String(startHour).padStart(2, '0')}:${String(startMinutes).padStart(2, '0')}`;
+            const end = `${String(endHour).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`;
+            times.push({ key: `${start} - ${end}` });
+        }
+
+        return times;
+    };
+
+    const handleDayPress = (dayIndex: number) => {
+        setSelectedDay(dayIndex + 1); // Update selected day (Monday to Sunday is 1 to 7)
+    };
+
+    const handleEventPress = async (event: Event) => {
+        setSelectedEvent(event);
+      
+        try {
+          const storedId = await AsyncStorage.getItem('@id');
+          if (!storedId) {
+            console.error('Stored ID is null');
+            return;
+          }
+      
+          const studentId = JSON.parse(storedId);
+          if (!studentId) {
+            console.error('Student ID is null');
+            return;
+          }
+      
+          if (event && event.id && event.status === AppointmentSlotStatus.Completed) {
+            await getAttendanceStatus(studentId, event.id);
+          } 
+          setModalVisible(true);
+        } catch (error) {
+          console.error('Error processing student ID:', error);
+        }
+      };
+      
+
+
+    const handlePrevWeek = () => {
+        const newWeek = currentWeek.clone().subtract(1, 'week');
+        setCurrentWeek(newWeek);
+        const startTime = newWeek.startOf('isoWeek').format();
+        const endTime = newWeek.endOf('isoWeek').format();
+        fetchEvents(project, startTime, endTime);
+    };
+
+    const handleNextWeek = () => {
+        const newWeek = currentWeek.clone().add(1, 'week');
+        setCurrentWeek(newWeek);
+        const startTime = newWeek.startOf('isoWeek').format();
+        const endTime = newWeek.endOf('isoWeek').format();
+        fetchEvents(project, startTime, endTime);
     };
 
     useEffect(() => {
@@ -204,102 +374,49 @@ const CalendarScreen = () => {
     }, [courseId, semesterId]);
 
     useEffect(() => {
-        if (mentorId && lecturerId && project) {
-            fetchEvents(project); // Pass the project to fetchEvents
+        if (mentorIds.length > 0 && lecturerIds.length > 0 && project) {
+            const startTime = currentWeek.startOf('isoWeek').format();
+            const endTime = currentWeek.endOf('isoWeek').format();
+            fetchEvents(project, startTime, endTime);
         }
-    }, [mentorId, lecturerId, project]);
-
-    const getDates = () => {
-        const dates: string[] = [];
-        for (let i = 0; i < 7; i++) {
-            dates.push(currentWeek.clone().add(i, 'days').format('DD'));
-        }
-        return dates;
-    };
-
-    const generateTimeSlots = () => {
-        const times: { key: string }[] = [];
-        for (let i = 7; i <= 21; i++) {
-            times.push({ key: `${i}:00 - ${i + 1}:00` });
-        }
-        return times;
-    };
-
-    const handleDayPress = (dayIndex: number) => {
-        setSelectedDay(dayIndex + 1); // Update selected day (Monday to Sunday is 1 to 7)
-    };
-
-    const handleEventPress = (event: { note: string, meetingAddress: string, id: string, status: number, creatorName: string }) => {
-        setSelectedEvent(event);
-        setModalVisible(true);
-    };
-
-    const handleAttendCancel = async (scheduleAppointment: boolean) => {
-        if (selectedEvent) {
-            try {
-                const token = await AsyncStorage.getItem('@userToken');
-                const response = await fetch(`https://smnc.site/api/AppointmentSlots/${selectedEvent.id}/ScheduleAppointment?teamId=${myTeamId}&scheduleAppointment=${scheduleAppointment}`, {
-                    method: 'PATCH',
-                    headers: {
-                        'accept': '*/*',
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                });
-                const data = await response.json();
-                setModalVisible(false);
-                setConfirmVisible(false);
-                setCancelVisible(false);
-                Alert.alert('Success', 'The appointment has been updated successfully.');
-                // Refresh events after updating
-                fetchEvents(project); // Pass the project to fetchEvents
-            } catch (error) {
-                console.error('Error updating event:', error);
-                Alert.alert('Error', 'There was an error updating the appointment.');
-            }
-        }
-    };
-
-    const getEventColor = (status: number) => {
-        switch (status) {
-            case 0: return '#FFA500'; // Available
-            case 1: return '#00FF00'; // Scheduled
-            case 2: return '#0000FF'; // InProgress
-            case 3: return '#800080'; // Completed
-            case 4: return '#FF0000'; // Cancelled
-            case 5: return '#808080'; // Absent
-            default: return '#000000'; // Default color
-        }
-    };
+    }, [mentorIds, lecturerIds, project, currentWeek]);
+    
 
     useEffect(() => {
-        // Function to update the date and week state
         const updateDate = () => {
             const newToday = moment().isoWeekday();
             setToday(newToday);
-            setCurrentWeek(moment().startOf('week').add(1, 'day'));
+            const newCurrentWeek = moment().startOf('week').add(1, 'day');
+            setCurrentWeek(newCurrentWeek);
+    
+            if (mentorIds.length > 0 && lecturerIds.length > 0 && project) {
+                const startTime = newCurrentWeek.startOf('isoWeek').format();
+                const endTime = newCurrentWeek.endOf('isoWeek').format();
+                fetchEvents(project, startTime, endTime);
+            }
         };
-
-        // Initial update
+    
         updateDate();
-
-        // Calculate the time remaining until midnight
+    
         const now = moment();
         const nextMidnight = moment().startOf('day').add(1, 'day');
         const timeUntilMidnight = nextMidnight.diff(now);
-
-        // Set timeout to update at midnight, then set an interval for subsequent days
+    
         const timeout = setTimeout(() => {
             updateDate();
             setInterval(updateDate, 24 * 60 * 60 * 1000); // Every 24 hours
         }, timeUntilMidnight);
-
+    
         return () => clearTimeout(timeout);
-    }, []);
+    }, [mentorIds, lecturerIds, project]);
 
     useEffect(() => {
-        console.log("Selected Day: ", selectedDay); // Debugging purpose to check selectedDay state
+        console.log("Selected Day: ", selectedDay);
     }, [selectedDay]);
+
+    if (loading) {
+        return <ActivityIndicator size="large" color="#0000ff" />;
+    }
 
     return (
         <View style={styles.container}>
@@ -309,9 +426,18 @@ const CalendarScreen = () => {
                 </TouchableOpacity>
                 <Text style={styles.headerText}>Calendar</Text>
             </View>
-            <Text style={styles.currentWeekText}>
-                Current week: {currentWeek.startOf('isoWeek').format('DD/MM/YYYY')} - {currentWeek.endOf('isoWeek').format('DD/MM/YYYY')}
-            </Text>
+            <View style={styles.weekNavigation}>
+                <TouchableOpacity onPress={handlePrevWeek}>
+                    <Text style={styles.arrow}>←</Text>
+                </TouchableOpacity>
+                <Text style={styles.currentWeekText}>
+                    {currentWeek.startOf('isoWeek').format('DD/MM/YYYY')} - {currentWeek.endOf('isoWeek').format('DD/MM/YYYY')}
+                </Text>
+                <TouchableOpacity onPress={handleNextWeek}>
+                    <Text style={styles.arrow}>→</Text>
+                </TouchableOpacity>
+            </View>
+
 
             <View style={styles.calendarHeader}>
                 {daysOfWeek.map((day, index) => {
@@ -321,7 +447,7 @@ const CalendarScreen = () => {
                             <Text style={styles.dayText}>
                                 {day}
                             </Text>
-                            <Text style={[styles.dateText, currentWeek.clone().startOf('isoWeek').day(index + 1).isSame(moment(), 'day') && styles.todayHighlight]}>
+                            <Text style={[styles.dateText, (selectedDay === index + 1) && styles.todayHighlight]}>
                                 {date}
                             </Text>
                         </TouchableOpacity>
@@ -340,13 +466,15 @@ const CalendarScreen = () => {
                             {Object.keys(events).map(day => (
                                 moment(day, "dddd YYYY-MM-DD").isoWeekday() === selectedDay &&
                                 events[day].map((event: Event, idx: number) => {
-                                    const eventStartHour = parseInt(moment(event.startTime).format('HH'), 10);
-                                    const timeSlotStartHour = parseInt(item.key.split(':')[0], 10);
-
+                                    const eventStart = moment(event.startTime).format('HH:mm');
+                                    const eventEnd = moment(event.endTime).format('HH:mm');
+                                    const timeSlotStart = moment(item.key.split(' - ')[0], 'HH:mm').format('HH:mm');
+                                    const timeSlotEnd = moment(item.key.split(' - ')[1], 'HH:mm').format('HH:mm');
                                     // Condition to check if user is leader or show appointment slot if event.creatorId matches mentorId or lecturerId
-                                    const shouldShowEvent = isLeader || (event.creatorId === mentorId || event.creatorId === lecturerId);
-
-                                    if (eventStartHour === timeSlotStartHour && (shouldShowEvent)) {
+                                    const shouldShowEvent = isLeader ;
+                                    // Check if the event start time and end time match the time slot start time and end time
+                                    const isEventInTimeSlot = eventStart === timeSlotStart && eventEnd === timeSlotEnd;
+                                    if (isEventInTimeSlot) {
                                         return (
                                             <TouchableOpacity key={idx} style={[styles.sampleEvent, { backgroundColor: getEventColor(event.status) }]} onPress={() => handleEventPress(event)}>
                                                 <Text style={styles.eventText}>{event.note}</Text>
@@ -357,6 +485,7 @@ const CalendarScreen = () => {
                                 })
                             ))}
                         </View>
+
                     </View>
                 )}
                 keyExtractor={(item) => item.key}
@@ -364,50 +493,78 @@ const CalendarScreen = () => {
             />
             {selectedEvent && (
                 <Modal
-                    animationType="slide"
-                    transparent={true}
-                    visible={modalVisible}
-                    onRequestClose={() => {
-                        setModalVisible(!modalVisible);
-                    }}
-                >
-                    <View style={styles.centeredView}>
-                        <View style={styles.modalView}>
-                            <Text style={styles.modalText}>Meeting Address:</Text>
-                            <TouchableOpacity onPress={() => Linking.openURL(selectedEvent.meetingAddress)}>
-                                <Text style={[styles.modalText, { color: 'blue', textDecorationLine: 'underline' }]}>
-                                    {selectedEvent.meetingAddress}
-                                </Text>
-                            </TouchableOpacity>
-                            <Text style={styles.modalText}>
-                                Created by: {selectedEvent.creatorName}
-                            </Text>
-                            {isLeader && selectedEvent.status === 0 && (
-                                <View style={styles.buttonContainer}>
-                                    <TouchableOpacity
-                                        style={[styles.button, styles.buttonAttend]}
-                                        onPress={() => setConfirmVisible(true)}
-                                    >
-                                        <Text style={styles.textStyle}>Attend</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={[styles.button, styles.buttonCancel]}
-                                        onPress={() => setCancelVisible(true)}
-                                    >
-                                        <Text style={styles.textStyle}>Cancel</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            )}
-                            <TouchableOpacity
-                                style={[styles.button, styles.buttonClose]}
-                                onPress={() => setModalVisible(!modalVisible)}
-                            >
-                                <Text style={styles.textStyle}>Close</Text>
-                            </TouchableOpacity>
-                        </View>
+                animationType="slide"
+                transparent={true}
+                visible={modalVisible}
+                onRequestClose={() => {
+                  setModalVisible(!modalVisible);
+                }}
+              >
+                <View style={styles.centeredView}>
+                  <View style={styles.modalView}>
+                    {selectedEvent.status === AppointmentSlotStatus.InProgress && (
+                      <View>
+                        <Text style={styles.modalText}>Meeting Address:</Text>
+                        <TouchableOpacity onPress={() => handlePress(selectedEvent.id)}>
+                          <Text style={{ color: 'blue', textDecorationLine: 'underline' }}>
+                            {selectedEvent.meetingAddress}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    <Text style={styles.modalText}>
+                      Created by: {selectedEvent.creatorName}
+                    </Text>
+                    <Text style={styles.modalText}>
+                      Status: {AppointmentSlotStatus[selectedEvent.status]}
+                    </Text>
+                    {selectedEvent.status === AppointmentSlotStatus.Completed && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={styles.modalText}>Attendance: </Text>
+                      <Text
+                        style={
+                          attendanceStatus === 0
+                            ? styles.statusAbsent
+                            : attendanceStatus === 1
+                            ? styles.statusPresent
+                            : styles.modalText
+                        }
+                      >
+                        {attendanceStatus === 0 ? 'Absent' : attendanceStatus === 1 ? 'Present' : 'Loading...'}
+                      </Text>
                     </View>
-                </Modal>
+                    )}
+                    {isLeader && selectedEvent.status === AppointmentSlotStatus.Available && (
+                      <View style={styles.buttonContainer}>
+                        <TouchableOpacity
+                          style={[styles.button, styles.saveButton]}
+                          onPress={() => setConfirmVisible(true)}
+                        >
+                          <Text style={styles.textStyle}>Book</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                     {isLeader && selectedEvent.status === AppointmentSlotStatus.Scheduled && (
+                      <View style={styles.buttonContainer}>
+                        <TouchableOpacity
+                          style={[styles.button, styles.cancelButton]}
+                          onPress={() => setCancelVisible(true)}
+                        >
+                          <Text style={styles.textStyle}>Cancel</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.button, styles.buttonClose]}
+                      onPress={() => setModalVisible(!modalVisible)}
+                    >
+                      <Text style={styles.textStyle}>Close</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Modal>              
             )}
+
             {confirmVisible && (
                 <Modal
                     animationType="slide"
@@ -419,7 +576,7 @@ const CalendarScreen = () => {
                 >
                     <View style={styles.centeredView}>
                         <View style={styles.modalView}>
-                            <Text style={styles.modalText}>Are you sure you want to attend this appointment?</Text>
+                            <Text style={styles.modalText}>Are you sure you want to book this appointment?</Text>
                             <View style={styles.buttonContainer}>
                                 <TouchableOpacity
                                     style={[styles.button, styles.buttonAttend]}
@@ -439,37 +596,38 @@ const CalendarScreen = () => {
                 </Modal>
             )}
             {cancelVisible && (
-    <Modal
-        animationType="slide"
-        transparent={true}
-        visible={cancelVisible}
-        onRequestClose={() => {
-            setCancelVisible(!cancelVisible);
-        }}
-    >
-        <View style={styles.centeredView}>
-            <View style={styles.modalView}>
-                <Text style={styles.modalText}>Are you sure you want to cancel this appointment?</Text>
-                <View style={styles.buttonContainer}>
-                    <TouchableOpacity
-                        style={[styles.button, styles.buttonAttend]}
-                        onPress={() => handleAttendCancel(false)}
-                    >
-                        <Text style={styles.textStyle}>Yes</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.button, styles.buttonCancel]}
-                        onPress={() => setCancelVisible(false)}
-                    >
-                        <Text style={styles.textStyle}>No</Text>
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </View>
-    </Modal>
-)}
+                <Modal
+                    animationType="slide"
+                    transparent={true}
+                    visible={cancelVisible}
+                    onRequestClose={() => {
+                        setCancelVisible(!cancelVisible);
+                    }}
+                >
+                    <View style={styles.centeredView}>
+                        <View style={styles.modalView}>
+                            <Text style={styles.modalText}>Are you sure you want to cancel this appointment?</Text>
+                            <View style={styles.buttonContainer}>
+                                <TouchableOpacity
+                                    style={[styles.button, styles.buttonAttend]}
+                                    onPress={() => handleAttendCancel(false)}
+                                >
+                                    <Text style={styles.textStyle}>Yes</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.button, styles.buttonCancel]}
+                                    onPress={() => setCancelVisible(false)}
+                                >
+                                    <Text style={styles.textStyle}>No</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+            )}
         </View>
     );
+
 };
 
 const styles = StyleSheet.create({
@@ -489,7 +647,7 @@ const styles = StyleSheet.create({
         left: 5,
     },
     backButtonText: {
-        fontSize: 33,
+        fontSize: 40,
         color: '#fff',
     },
     headerText: {
@@ -499,6 +657,18 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         flex: 1,
         marginTop: 30,
+    },
+    weekNavigation: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginVertical: 10,
+    },
+    arrow: {
+        fontSize: 30,
+        color: '#003366',
+        marginHorizontal: 60,
+        marginBottom: 10
     },
     currentWeekText: {
         fontSize: 18,
@@ -593,10 +763,10 @@ const styles = StyleSheet.create({
     buttonContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        width: '80%',
+        width: '100%',
     },
     button: {
-        borderRadius: 20,
+        borderRadius: 5,
         padding: 10,
         elevation: 2,
     },
@@ -625,6 +795,22 @@ const styles = StyleSheet.create({
         color: '#666',
         fontStyle: 'italic',
     },
+    saveButton: {
+        marginTop: 15,
+        backgroundColor: '#28a745',
+    },
+    cancelButton: {
+        marginTop: 15,
+        backgroundColor: '#d9534f',
+    },
+    statusAbsent: {
+        marginBottom: 15,
+        color: 'red',
+      },
+      statusPresent: {
+        marginBottom: 15,
+        color: 'green',
+      },    
 });
 
 export default CalendarScreen;

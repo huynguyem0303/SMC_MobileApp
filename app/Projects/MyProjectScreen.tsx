@@ -38,6 +38,7 @@ interface Team {
 
 interface ProjectDetail {
     id: string;
+    projectCode: string;
     projectName: string;
     projectDetail: string;
     projectProgress: number;
@@ -83,14 +84,13 @@ const MyProjectScreen = () => {
                 });
 
                 const data = await response.json();
-                // console.log('API response:', data);
 
-                if (data.status && data.data && data.data.length > 0) {
-                    setProjectDetail(data.data[0]);
-                    // console.log("detail:",projectDetail)
-                    setMemberWantedStatus(data.data[0].memberWantedStatus);
-                    setMemberWantedInput(data.data[0].memberWanted);
+                if (data.status && data.data.data && data.data.data.length > 0) {
+                    setProjectDetail(data.data.data[0]);
+                    setMemberWantedStatus(data.data.data[0].memberWantedStatus);
+                    setMemberWantedInput(data.data.data[0].memberWanted);
                 } else {
+                    console.log(data.data.length);
                     setError(data.message || 'Unexpected response structure');
                 }
             } catch (error) {
@@ -137,10 +137,10 @@ const MyProjectScreen = () => {
                 try {
                     const data = await response.json();
                     // console.log('API response:', data);
-                    Alert.alert('Success', 'Member wanted status updated');
+                    // Alert.alert('Success', 'Member wanted status updated');
                 } catch (error) {
                     console.log('No JSON response body');
-                    Alert.alert('Success', 'Member wanted status updated');
+                    // Alert.alert('Success', 'Member wanted status updated');
                 }
             } else {
                 const errorData = await response.json();
@@ -153,6 +153,22 @@ const MyProjectScreen = () => {
         }
     };
     const handleConfirm = async () => {
+        // List of valid roles
+        const validRoles = ['FE', 'BE', 'Mobile', 'UI/UX', 'Marketing'];
+
+        // Validate that the memberWantedInput is not empty
+        if (!memberWantedInput.trim()) {
+            Alert.alert('Validation Error', 'Member wanted input cannot be empty');
+            return;
+        }
+        // Split the memberWantedInput into roles separated by commas
+        const roleWords = memberWantedInput.trim().split(/\s*,\s*/);
+        for (const word of roleWords) {
+            if (!validRoles.includes(word)) {
+                Alert.alert('Validation Error', 'Invalid member role. Please enter one of the following roles: FE, BE, Mobile, UI/UX, Marketing and must use , between 2 roles');
+                return;
+            }
+        }
         try {
             const token = await AsyncStorage.getItem('@userToken');
             if (!token) {
@@ -180,10 +196,10 @@ const MyProjectScreen = () => {
                 try {
                     const data = await response.json();
                     // console.log('API response:', data);
-                    Alert.alert('Success', 'Member wanted status updated');
+                    Alert.alert('Success', 'Member wanted updated');
                 } catch (error) {
                     console.log('No JSON response body');
-                    Alert.alert('Success', 'Member wanted status updated');
+                    Alert.alert('Success', 'Member wanted updated');
                 }
             } else {
                 const errorData = await response.json();
@@ -196,7 +212,24 @@ const MyProjectScreen = () => {
         }
     };
 
+    const handleMilestone = () => {
+        router.push({
+            pathname: '/Tasks/MilestoneScreen',
+            params: {
+                semesterId: semesterId,
+                courseId: courseId
+            },
+        });
+    };
+    const handleFinance = () => {
+        router.push({
+            pathname: './FinanceScreen',
+            params: {
+                projectId: projectDetail?.id,
 
+            },
+        });
+    };
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -234,6 +267,18 @@ const MyProjectScreen = () => {
                             <Text style={styles.time}>Semester :</Text>
                             <Text style={styles.detailText}>{projectDetail?.semesterAndCourse.semester}</Text>
                         </View>
+                        <View style={styles.inlineContainer}>
+                            <Text style={styles.time}>Course:</Text>
+                            <Text style={styles.detailText}>{projectDetail?.semesterAndCourse.course}</Text>
+                        </View>
+                        <View style={styles.inlineContainer}>
+                            <Text style={styles.time}>Project Code:</Text>
+                            <Text style={styles.detailText}>{projectDetail?.projectCode}</Text>
+                        </View>
+                        <View style={styles.inlineContainer}>
+                            <Text style={styles.time}>Category:</Text>
+                            <Text style={styles.detailText}>{projectDetail?.category}</Text>
+                        </View>
                         <Text style={styles.sectionTitle}>Mentors and Lecturers:</Text>
                         {projectDetail?.mentorsAndLecturers.map((mentor: Mentor, index: number) => (
                             <View key={index} style={styles.mentorContainer}>
@@ -246,10 +291,17 @@ const MyProjectScreen = () => {
                             </View>
                         ))}
                         <View style={styles.inlineContainer}>
-                            <Text style={styles.time}>Course:</Text>
-                            <Text style={styles.detailText}>{projectDetail?.semesterAndCourse.course}</Text>
+                            <Text style={styles.time}>Milestones:</Text>
+                            <TouchableOpacity onPress={handleMilestone}>
+                                <Text style={styles.detailMilestoneText}>Details</Text>
+                            </TouchableOpacity>
                         </View>
-
+                        <View style={styles.inlineContainer}>
+                            <Text style={styles.time}>Finances:</Text>
+                            <TouchableOpacity onPress={handleFinance}>
+                                <Text style={styles.detailMilestoneText}>Details</Text>
+                            </TouchableOpacity>
+                        </View>
                         {isLeader ? (
                             <View style={styles.switchContainer}>
                                 <Text style={styles.switchLabel}>Member Wanted:</Text>
@@ -261,10 +313,13 @@ const MyProjectScreen = () => {
                         ) : (
                             <View style={styles.inlineContainer}>
                                 <Text style={styles.time}>Member Wanted:</Text>
-                                {memberWantedStatus && (
+                                {memberWantedStatus ? (
                                     <Text style={styles.detailText}>{projectDetail?.memberWanted}</Text>
+                                ) : (
+                                    <Text style={styles.detailText}>None</Text>
                                 )}
                             </View>
+
                         )}
 
                         {isLeader && memberWantedStatus && (
@@ -280,6 +335,8 @@ const MyProjectScreen = () => {
                                 </TouchableOpacity>
                             </View>
                         )}
+
+
                         {/* <Text style={styles.sectionTitle}>Team Members:</Text>
                         {projectDetail?.team.members
                             .filter((member: Member) => !member.isDeleted)
@@ -289,7 +346,6 @@ const MyProjectScreen = () => {
                                     {member.studentName} - {member.studentCode} - {member.memberRole} {member.isLeader ? '(Leader)' : ''}
                                 </Text>
                             ))} */}
-                     
                     </View>
                 </View>
             </ScrollView>
@@ -312,7 +368,7 @@ const styles = StyleSheet.create({
         left: 5,
     },
     backButtonText: {
-        fontSize: 33,
+        fontSize: 40,
         color: '#fff',
     },
     inlineContainer: {
@@ -472,6 +528,14 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         marginBottom: 10,
     },
+    detailMilestoneText: {
+        fontSize: 16,
+        color: 'blue',
+        textDecorationLine: 'underline',
+        cursor: 'pointer', // Makes it look like a link on web
+        marginBottom: 10,
+    },
+
 });
 
 export default MyProjectScreen;    

@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import getToken from '../components/Jwt/getToken'; // Adjust the path if necessary
 import fetchAccountData from '../components/fetchAccountData'; //
 const { width } = Dimensions.get('window');
-
+import { useIsFocused } from '@react-navigation/native';
 // Define types for the parameters and response data
 interface CourseInstanceDetails {
     data: {
@@ -65,7 +65,7 @@ const fetchTeamDetails = async (courseId: string, semesterId: string, userToken:
         });
         const data = await response.json();
         if (data.status === false) {
-            console.error('Error fetching team details:', data.message, data.errors);
+            // console.error('Error fetching team details:', data.message, data.errors);
             return null;
         }
         const members: Member[] = data.data.members.map((member: any) => ({
@@ -101,6 +101,7 @@ const MenuScreen = () => {
     const [courseDetails, setCourseDetails] = useState<{ courseId: string | null; semesterId: string | null }>({ courseId: null, semesterId: null });
     const [loading, setLoading] = useState<boolean>(true); // Loading state
     const [memberCount, setMemberCount] = useState<number>(0);
+    const isFocused = useIsFocused();
     useEffect(() => {
         Animated.timing(slideAnim, {
             toValue: 0,
@@ -141,6 +142,8 @@ const MenuScreen = () => {
                                     semesterId: courseDetails.data.semesterId,
                                 });
                                 // console.log('Course Details:', courseDetails);
+                                console.log("Course:", courseDetails.data.courseId);
+                                console.log("Semester:", courseDetails.data.semesterId);
                                 if (courseDetails.data.courseId && courseDetails.data.semesterId) {
                                     // Fetch team details using courseId and semesterId
 
@@ -151,8 +154,9 @@ const MenuScreen = () => {
                                         const members: Member[] = teamDetails.data.members as Member[];
                                         const activeMemberCount = members.filter((member) => !member.isDeleted).length; 
                                         setMemberCount(activeMemberCount);
+                                        await AsyncStorage.setItem('@memberCount', JSON.stringify(memberCount));
                                         setTeamId(teamDetails.data.teamId);
-                                        console.log("membercount", activeMemberCount)
+                                        // console.log("membercount", activeMemberCount)
                                         // console.log("teamDetail", teamDetails.data.members)
                                         const isCurrentUserLeader = teamDetails.data.members.filter(
                                             (member: { studentCode: string; isLeader: boolean }) =>
@@ -162,10 +166,9 @@ const MenuScreen = () => {
                                         const memberid=member?.id;
                                         // console.log("isLeader:",isCurrentUserLeader);
                                         setStudentCode(parsedData.student.studentCode);
-                                        console.log("code:",parsedData.student.studentCode);
+                                        // console.log("code:",parsedData.student.studentCode);
                                         await AsyncStorage.setItem('@isLeader', JSON.stringify(isCurrentUserLeader));
                                         await AsyncStorage.setItem('@memberid', JSON.stringify(memberid));
-                                        
                                         await AsyncStorage.setItem('@haveTeam', JSON.stringify(true));
                                     }else{
                                         await AsyncStorage.setItem('@haveTeam', JSON.stringify(false));
@@ -193,7 +196,7 @@ const MenuScreen = () => {
 
         // // Clean up the event listener
         // return () => backHandler.remove();
-    }, [slideAnim]);
+    }, [slideAnim,isFocused]);
 
     const toggleMenu = () => {
         setMenuVisible(!menuVisible);
@@ -210,8 +213,10 @@ const MenuScreen = () => {
             await AsyncStorage.removeItem('@accountData');
             await AsyncStorage.removeItem('@isLeader');
             await AsyncStorage.removeItem('@haveTeam');
-            await AsyncStorage.removeItem('@requestCount');
+            await AsyncStorage.removeItem('@memberCount');
+            // await AsyncStorage.removeItem('@requestCount');
             await AsyncStorage.removeItem('@memberid');
+            await AsyncStorage.removeItem('@id');
             await GoogleSignin.revokeAccess(); // Optional: Revoke access to Google account
             await GoogleSignin.signOut();
             console.log('User signed out');
@@ -247,6 +252,10 @@ const MenuScreen = () => {
     const handleProjectTask = () => {
         if (!studentCode) {
             Alert.alert("You need a team to use this function");
+            return;
+        }
+        if(memberCount<4){
+            Alert.alert("You team need 4 or more member to use this function");
             return;
         }
     
@@ -352,7 +361,7 @@ const MenuScreen = () => {
                             </TouchableOpacity>
                         </View>
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Mentor Appointment</Text>
+                            <Text style={styles.sectionTitle}>Appointment</Text>
                             <TouchableOpacity style={styles.menuItem} onPress={() => handleCalendar()} >
                                 <Image source={require('../assets/images/calender-icon.png')} style={styles.icon} />
                                 <Text style={styles.menuText}>Calendar</Text>

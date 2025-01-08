@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput, Button, Alert, Image } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput, Button, Alert, Image, Platform } from "react-native";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import RNPickerSelect from 'react-native-picker-select';
-import DatePicker from 'react-native-date-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { format } from 'date-fns';
 import { useIsFocused } from '@react-navigation/native';
 import moment from 'moment';
 
@@ -50,11 +51,18 @@ const TaskListScreen = () => {
     const [taskDescription, setTaskDescription] = useState('');
     const [taskStartTime, setTaskStartTime] = useState(new Date());
     const [taskEndTime, setTaskEndTime] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    const [showStartPicker, setShowStartPicker] = useState(false);
+    const [showEndPicker, setShowEndPicker] = useState(false);
     const [taskReminder, setTaskReminder] = useState(ReminderEnum.None);
     const [taskPriority, setTaskPriority] = useState(0);
     const { courseId, semesterId } = useLocalSearchParams();
     const router = useRouter();
+    const [isLeader, setIsLeader] = useState(false);
     const isFocused = useIsFocused();
+    const [isStartDateTimeChosen, setIsStartDateTimeChosen] = useState(false);
+    const [isEndDateTimeChosen, setIsEndDateTimeChosen] = useState(false);
+    const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+    const [showEndTimePicker, setShowEndTimePicker] = useState(false);
     const today = moment();
 
     useEffect(() => {
@@ -64,6 +72,10 @@ const TaskListScreen = () => {
     const fetchTasks = async () => {
         try {
             const token = await AsyncStorage.getItem('@userToken');
+            const storedIsLeader = await AsyncStorage.getItem('@isLeader');
+            setIsStartDateTimeChosen(false);
+            setIsEndDateTimeChosen(false);
+            setIsLeader(storedIsLeader === 'true');
             if (!token) {
                 throw new Error('No token found');
             }
@@ -75,8 +87,8 @@ const TaskListScreen = () => {
             });
 
             const projectData = await projectResponse.json();
-            if (projectData.status && projectData.data && projectData.data.length > 0) {
-                const projectId = projectData.data[0].id;
+            if (projectData.status && projectData.data.data && projectData.data.data.length > 0) {
+                const projectId = projectData.data.data[0].id;
                 setProjectId(projectId);
                 const response = await fetch(`https://smnc.site/api/ProjectTasks?projectId=${projectId}&isGroupByWeek=true&orderByStartTime=true`, {
                     headers: {
@@ -88,9 +100,10 @@ const TaskListScreen = () => {
                 const data = await response.json();
 
                 if (data.status && data.data) {
-                    // Sort tasks by priority within each week
+                    // Sort tasks by priority within each week and filter tasks where isDeleted is false
                     const sortedTasks = data.data.map((week: { weekNumber: number, tasks: Task[] }) => {
-                        const sortedWeekTasks = week.tasks.sort((a, b) => a.priority - b.priority);
+                        const filteredTasks = week.tasks.filter(task => !task.isDeleted);
+                        const sortedWeekTasks = filteredTasks.sort((a, b) => a.priority - b.priority);
                         return {
                             ...week,
                             tasks: sortedWeekTasks,
@@ -109,14 +122,32 @@ const TaskListScreen = () => {
         }
     };
 
+
     const handleAddTask = async () => {
-        if (taskStartTime.getTime() <= Date.now()) {
-            Alert.alert('Error', 'Start time must be from tomorrow onwards.');
+        // Validate that the taskName and taskDescription do not contain special characters and length <= 200 words
+        const specialCharPattern = /[^a-zA-Z0-9\s]/;
+        if (specialCharPattern.test(taskName) || specialCharPattern.test(taskDescription)) {
+            Alert.alert('Validation Error', 'Task name and description should not contain special characters.');
+            return;
+        }
+
+        const wordCount = (text: any) => text.trim().split(/\s+/).length;
+        if (wordCount(taskName) > 200 || wordCount(taskDescription) > 200) {
+            Alert.alert('Validation Error', 'Task name and description should not exceed 200 words.');
+            return;
+        }
+
+        if (taskName.trim() === '' || taskDescription.trim() === '') {
+            Alert.alert('Validation Error', 'Task name and description cannot be empty.');
             return;
         }
 
         if (taskEndTime <= taskStartTime) {
             Alert.alert('Error', 'End time must be greater than start time.');
+            return;
+        }
+        if (taskEndTime <= new Date()) {
+            Alert.alert('Error', 'End date must be greater than today date.');
             return;
         }
 
@@ -164,6 +195,7 @@ const TaskListScreen = () => {
             Alert.alert('Error', 'An error occurred while adding the task.');
         }
     };
+
 
     const handleAssignTask = async (taskId: string) => {
         try {
@@ -215,6 +247,47 @@ const TaskListScreen = () => {
             pathname: '/Tasks/TaskDetailScreen',
             params: { taskId },
         });
+    };
+    const handleDeleteTask = (taskId: string) => {
+        Alert.alert(
+            'Confirm Delete',
+            'Are you sure you want to delete this task?',
+            [
+                {
+                    text: 'Cancel',
+                    onPress: () => console.log('Cancel Pressed'),
+                    style: 'cancel'
+                },
+                {
+                    text: 'Confirm',
+                    onPress: () => deleteTask(taskId)
+                }
+            ],
+            { cancelable: false }
+        );
+    };
+
+    const deleteTask = async (taskId: string) => {
+        try {
+            const token = await AsyncStorage.getItem('@userToken');
+            const response = await fetch(`https://smnc.site/api/ProjectTasks/${taskId}`, {
+                method: 'DELETE',
+                headers: {
+                    'accept': '*/*',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            if (response.ok) {
+                Alert.alert('Success', 'Task deleted successfully.');
+                fetchTasks(); // Refresh tasks after deletion
+            } else {
+                const data = await response.json();
+                Alert.alert('Error', data.message || 'Failed to delete task.');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'An error occurred while deleting the task.');
+        }
     };
 
     const renderAssignModal = (taskId: string) => (
@@ -293,7 +366,8 @@ const TaskListScreen = () => {
                         <Text style={styles.weekTitle}>Week {week.weekNumber}</Text>
                         {week.tasks.map((task) => {
                             const endTime = moment(task.endTime);
-                            const showAlert = task.status !== TaskStatusEnum.Completed && endTime.diff(today, 'days') <= task.reminder;
+                            const isEndTimePast = endTime < moment();
+                            const showAlert = task.reminder !== 0 && task.status !== TaskStatusEnum.Completed && endTime.diff(moment(), 'days') <= task.reminder && endTime >= moment();
                             return (
                                 <TouchableOpacity key={`task-${task.id}`} onPress={() => handleDetail(task.id)}>
                                     <View style={styles.task}>
@@ -305,6 +379,12 @@ const TaskListScreen = () => {
                                                     i === 0 ? member.name : `, ${member.name}`
                                                 ).join('')}
                                             </Text>
+
+                                            {isEndTimePast && (
+                                                <Text style={styles.alertText}>
+                                                    Expired task
+                                                </Text>
+                                            )}
                                             {showAlert && (
                                                 <Text style={styles.alertText}>
                                                     Reminder: Task due soon!
@@ -314,6 +394,9 @@ const TaskListScreen = () => {
                                         <View style={styles.taskOptionsContainer}>
                                             <TouchableOpacity onPress={() => openAssignModal(task.id)}>
                                                 <Text style={styles.moreOptions}>...</Text>
+                                            </TouchableOpacity>
+                                            <TouchableOpacity onPress={() => handleDeleteTask(task.id)}>
+                                                <Image source={require('../../assets/images/trash-icon.png')} style={styles.icon} />
                                             </TouchableOpacity>
                                             <View style={[styles.statusDot, { backgroundColor: getStatusColor(task.status) }]} />
                                         </View>
@@ -346,71 +429,126 @@ const TaskListScreen = () => {
                         onChangeText={setTaskDescription}
                         style={styles.input}
                     />
-                    <Text style={styles.datePickerLabel}>Start Time</Text>
-                    <DatePicker
-                        date={taskStartTime}
-                        onDateChange={(date) => {
-                            if (date.getTime() <= Date.now()) {
-                                Alert.alert('Error', 'Start time must be from tomorrow onwards.');
-                            } else {
-                                setTaskStartTime(date);
-                            }
-                        }}
-                        minimumDate={new Date(Date.now() + 24 * 60 * 60 * 1000)}
-                        mode="datetime"
-                        style={styles.datePicker}
-                    />
-                    <Text style={styles.datePickerLabel}>End Time</Text>
-                    <DatePicker
-                        date={taskEndTime}
-                        onDateChange={(date) => {
-                            if (date <= taskStartTime) {
-                                Alert.alert('Error', 'End time must be greater than start time.');
-                            } else {
-                                setTaskEndTime(date);
-                            }
-                        }}
-                        minimumDate={taskStartTime}
-                        mode="datetime"
-                        style={styles.datePicker}
-                    />
+                    <Text style={styles.label}>Start Date and Time</Text>
+                    <TouchableOpacity onPress={() => setShowStartPicker(true)} style={styles.dateInput}>
+                        <Text>{isStartDateTimeChosen ? new Date(taskStartTime).toLocaleString('en-GB', { timeZone: 'Europe/London', hour12: false }) : 'Choose Date and Time'}</Text>
+                    </TouchableOpacity>
+                    {showStartPicker && (
+                        <DateTimePicker
+                            value={taskStartTime}
+                            mode="date"
+                            display="default"
+                            onChange={(event, date) => {
+                                if (date && event.type === 'set') {
+                                    const adjustedDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+                                    setTaskStartTime(adjustedDate);
+                                    setShowStartPicker(false);
+                                    setShowStartTimePicker(true);
+                                }
+                            }}
+                        />
+                    )}
+                    {showStartTimePicker && (
+                        <DateTimePicker
+                            value={taskStartTime}
+                            mode="time"
+                            display="default"
+                            onChange={(event, time) => {
+                                if (time && event.type === 'set') {
+                                    // console.log('Time:', time);
+                                    const newStartTime = new Date(taskStartTime);
+                                    newStartTime.setHours(time.getHours(), time.getMinutes());
+                                    const adjustedTime = new Date(newStartTime.getTime() - newStartTime.getTimezoneOffset() * 60 * 1000);
+                                    setTaskStartTime(adjustedTime);
+                                    // console.log('Selected Time:', adjustedTime);
+                                    setIsStartDateTimeChosen(true);
+                                    setShowStartTimePicker(false);
+                                }
+                            }}
+                        />
+                    )}
+                    <Text style={styles.label}>End Date and Time</Text>
+                    <TouchableOpacity onPress={() => setShowEndPicker(true)} style={styles.dateInput}>
+                        <Text>{isEndDateTimeChosen ? new Date(taskEndTime).toLocaleString('en-GB', { timeZone: 'Europe/London', hour12: false }) : 'Choose Date and Time'}</Text>
+                    </TouchableOpacity>
+                    {showEndPicker && (
+                        <DateTimePicker
+                            value={taskEndTime}
+                            mode="date"
+                            display="default"
+                            onChange={(event, date) => {
+                                if (date && event.type === 'set') {
+                                    const adjustedDate = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+                                    setTaskEndTime(adjustedDate);
+                                    setShowEndPicker(false);
+                                    setShowEndTimePicker(true);
+                                }
+                            }}
+                        />
+                    )}
+                    {showEndTimePicker && (
+                        <DateTimePicker
+                            value={taskEndTime}
+                            mode="time"
+                            display="default"
+                            onChange={(event, time) => {
+                                if (time && event.type === 'set') {
+                                    // console.log('Time:', time);
+                                    const newEndTime = new Date(taskEndTime);
+                                    newEndTime.setHours(time.getHours(), time.getMinutes());
+                                    const adjustedTime = new Date(newEndTime.getTime() - newEndTime.getTimezoneOffset() * 60 * 1000);
+                                    setTaskEndTime(adjustedTime);
+                                    // console.log('Selected Time:', adjustedTime);
+                                    setIsEndDateTimeChosen(true);
+                                    setShowEndTimePicker(false);
+                                }
+                            }}
+                        />
+                    )}
                     <Text style={styles.label}>Reminder</Text>
-                    <RNPickerSelect
-                        value={taskReminder}
-                        onValueChange={(itemValue) => setTaskReminder(itemValue)}
-                        items={[
-                            { label: 'None', value: ReminderEnum.None },
-                            { label: 'One Day Before', value: ReminderEnum.OneDayBefore },
-                            { label: 'Two Days Before', value: ReminderEnum.TwoDaysBefore },
-                            { label: 'Three Days Before', value: ReminderEnum.ThreeDaysBefore },
-                            { label: 'One Week Before', value: ReminderEnum.OneWeekBefore },
-                            { label: 'Two Weeks Before', value: ReminderEnum.TwoWeeksBefore },
-                            { label: 'One Month Before', value: ReminderEnum.OneMonthBefore },
-                        ]}
-                        style={pickerSelectStyles}
-                    />
+                    <View style={styles.pickerContainer}>
+                        <RNPickerSelect
+                            value={taskReminder}
+                            onValueChange={(itemValue) => setTaskReminder(itemValue)}
+                            items={[
+                                { label: 'None', value: ReminderEnum.None },
+                                { label: 'One Day Before', value: ReminderEnum.OneDayBefore },
+                                { label: 'Two Days Before', value: ReminderEnum.TwoDaysBefore },
+                                { label: 'Three Days Before', value: ReminderEnum.ThreeDaysBefore },
+                                { label: 'One Week Before', value: ReminderEnum.OneWeekBefore },
+                                { label: 'Two Weeks Before', value: ReminderEnum.TwoWeeksBefore },
+                                { label: 'One Month Before', value: ReminderEnum.OneMonthBefore },
+                            ]}
+                            style={pickerSelectStyles}
+                        />
+                    </View>
                     <Text style={styles.label}>Priority</Text>
-                    <RNPickerSelect
-                        value={taskPriority}
-                        onValueChange={(itemValue) => setTaskPriority(itemValue)}
-                        items={[
-                            { label: 'Very High', value: 0 },
-                            { label: 'High', value: 1 },
-                            { label: 'Medium', value: 2 },
-                            { label: 'Low', value: 3 },
-                        ]}
-                        style={pickerSelectStyles}
-                    />
+                    <View style={styles.pickerContainer}>
+                        <RNPickerSelect
+                            value={taskPriority}
+                            onValueChange={(itemValue) => setTaskPriority(itemValue)}
+                            items={[
+                                { label: 'Very High', value: 0 },
+                                { label: 'High', value: 1 },
+                                { label: 'Medium', value: 2 },
+                                { label: 'Low', value: 3 },
+                            ]}
+                            style={pickerSelectStyles}
+                        />
+                    </View>
                     <View style={styles.buttonContainer}>
-                        <Button title="Add Task" onPress={handleAddTask} />
-                        <Button title="Cancel" onPress={() => setModalVisible(false)} />
+                        <TouchableOpacity style={styles.saveButton} onPress={handleAddTask}>
+                            <Text style={styles.saveButtonText}>Save</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
+                            <Text style={styles.cancelButtonText}>Cancel</Text>
+                        </TouchableOpacity>
                     </View>
                 </ScrollView>
             </Modal>
         </View>
     );
 };
-
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -427,7 +565,7 @@ const styles = StyleSheet.create({
         left: 5,
     },
     backButtonText: {
-        fontSize: 33,
+        fontSize: 40,
         color: '#fff',
     },
     headerText: {
@@ -454,7 +592,7 @@ const styles = StyleSheet.create({
     },
     task: {
         padding: 16,
-        backgroundColor: '#f9f9f9',
+        backgroundColor: '#f2f2f2', // Adjusted to a soft neutral tone
         borderRadius: 8,
         marginBottom: 10,
         shadowColor: '#000',
@@ -562,11 +700,21 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         width: '100%',
+        marginTop: 16,
     },
     label: {
         fontSize: 16,
         fontWeight: 'bold',
         marginTop: 20,
+    },
+    pickerContainer: {
+        marginHorizontal: 16,
+        height: 50,
+        width: 300,
+        marginBottom: 20,
+        borderColor: '#000000',
+        borderWidth: 0.3,
+        borderRadius: 5,
     },
     popupContainer: {
         position: 'absolute',
@@ -604,14 +752,37 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontWeight: 'bold',
     },
-    cancelButton: {
-        backgroundColor: '#d9534f',
-        padding: 10,
-        borderRadius: 5,
+    saveButton: {
         flex: 1,
-        marginLeft: 10,
-        marginRight: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        backgroundColor: '#28a745',
+        borderRadius: 5,
         alignItems: 'center',
+        marginHorizontal: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+        elevation: 2,
+    },
+    saveButtonText: {
+        color: '#fff',
+        fontWeight: 'bold',
+    },
+    cancelButton: {
+        flex: 1,
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        backgroundColor: '#d9534f',
+        borderRadius: 5,
+        alignItems: 'center',
+        marginHorizontal: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 3,
+        elevation: 2,
     },
     cancelButtonText: {
         color: '#fff',
@@ -628,8 +799,25 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginBottom: 20,
     },
-
-
+    dateInput: {
+        height: 40,
+        width: 290,
+        paddingHorizontal: 10,
+        borderWidth: 1,
+        borderColor: '#000',
+        borderRadius: 5,
+        backgroundColor: '#fff',
+        justifyContent: 'center',
+        marginBottom: 12,
+    },
+    icon: {
+        width: 20,
+        height: 20,
+        marginLeft: 10,
+        backgroundColor: '#f2f2f2', // Matching the subcard color
+        padding: 4, // Optional padding for better visual
+        borderRadius: 4, // Optional rounding for smoother look
+    },
 });
 
 const pickerSelectStyles = StyleSheet.create({

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import Dialog from 'react-native-dialog';
 // Define the JoinRequest and Student interfaces
 interface JoinRequest {
     type: string;
@@ -11,11 +11,16 @@ interface JoinRequest {
     createdDate: string;
     status: number;
     comment: string;
-    id: string;
+    teamRequestId: string;
+    senderEmail: string;
+    senderName: string;
+    senderStudentDepartment: string;
+    senderStudentCode: string;
     // Add other fields as necessary
 }
 
 interface Student {
+    email: string,
     studentName: string;
     studentCode: string;
     studentDepartment: string;
@@ -70,7 +75,9 @@ const fetchJoinRequests = async (teamId: string, token: string) => {
             const joinRequests = data.data.data.filter((request: JoinRequest) => request.type === "Join" && request.status === 0);
             return joinRequests;
         } else {
-            throw new Error('Failed to fetch join requests');
+            console.log();
+            throw new Error(teamId);
+
         }
     } catch (error) {
         console.error('Error fetching join requests:', error);
@@ -78,9 +85,9 @@ const fetchJoinRequests = async (teamId: string, token: string) => {
     }
 };
 
-const declineMember = async (requestId: string, token: string) => {
+const declineMember = async (requestId: any, token: any, reason: any) => {
     try {
-        const response = await fetch(`https://smnc.site/api/TeamRequest/${requestId}`, {
+        const response = await fetch(`https://smnc.site/api/TeamRequest/${requestId}/RejectRequest`, {
             method: 'PUT',
             headers: {
                 'accept': '*/*',
@@ -88,15 +95,16 @@ const declineMember = async (requestId: string, token: string) => {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                id: requestId,
-                comment: "Declined by the team leader",
-                status: 2,
+                id: requestId, // Ensure the ID is correctly included in the body
+                reason: reason,
+                notifyByEmail: true
             }),
         });
         if (response.ok) {
             return true;
         } else {
             const errorData = await response.json();
+            console.error('Error response:', errorData);
             return false;
         }
     } catch (error) {
@@ -105,59 +113,63 @@ const declineMember = async (requestId: string, token: string) => {
     }
 };
 
-const approveMember = async (request: DetailedJoinRequest, token: string, role: string) => {
+
+
+const approveMember = async (request: any, token: any, role: any) => {
+    const jsonValue = await AsyncStorage.getItem('@memberCount');
+    const memberCount = jsonValue != null ? Number(JSON.parse(jsonValue)) : null
+    if (memberCount === null || memberCount >= 9) {
+        Alert.alert('Error', 'Members in one team must be from 4-8 people');
+        return false;
+    }
     try {
-        const response1 = await fetch(`https://smnc.site/api/TeamRequest/${request.id}`, {
-            method: 'PUT',
-            headers: {
-                'accept': '*/*',
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                id: request.id,
-                comment: "Approved by the team leader",
-                status: 1,
-            }),
-        });
-
-        if (!response1.ok) {
-            const errorData = await response1.json();
-            throw new Error(errorData.message || 'Failed to approve request');
-        }
-
-        const response2 = await fetch('https://smnc.site/api/TeamMembers', {
+        // Call the new API endpoint to create a team member by request
+        const response2 = await fetch('https://smnc.site/api/TeamMembers/createbyrequest', {
             method: 'POST',
             headers: {
                 'accept': '*/*',
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify([{
-                studentCode: request.studentCode,
+            body: JSON.stringify({
+                teamRequestId: request.teamRequestId,
                 memberRole: role,
                 note: role,
-                isLeader: false,
-                teamId: request.teamId,
-            }]),
+                notifyByEmail: true
+            }),
         });
 
-        if (!response2.ok) {
-            const errorData = await response2.json();
-            throw new Error(errorData.message || 'Failed to add team member');
-        }
+        const responseBody = await response2.text(); // Capture the response body as text
 
+        if (!response2.ok) {
+            let errorData;
+            try {
+                errorData = JSON.parse(responseBody); // Try to parse as JSON
+            } catch (e) {
+                throw new Error('Failed to add team member: ' + responseBody); // If parsing fails, log the raw response
+            }
+
+            // Alert the error message and detailed errors
+            const errorMessages = errorData.errors ? errorData.errors.join('\n') : 'Unknown error';
+            console.log(errorMessages);
+            Alert.alert('Error', `${errorMessages}`);
+            return false;
+        }
         return true;
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error approving member:', error);
+        Alert.alert('Error', error.message);
         return false;
     }
 };
 
+// Usage example
+
+
 const RequestListScreen = () => {
     const router = useRouter();
     const { teamId } = useLocalSearchParams(); // Assuming teamId is passed from the previous page
-
+    const [declineReason, setDeclineReason] = useState("");
     const [detailedRequests, setDetailedRequests] = useState<DetailedJoinRequest[]>([]);
     const [loading, setLoading] = useState<boolean>(true);
     const [refresh, setRefresh] = useState<boolean>(false);
@@ -174,28 +186,16 @@ const RequestListScreen = () => {
             const token = await AsyncStorage.getItem('@userToken');
             if (token) {
                 const joinRequests = await fetchJoinRequests(typeof teamId === 'string' ? teamId : teamId[0], token);
-                await AsyncStorage.removeItem('@requestCount');
-                await AsyncStorage.setItem('@requestCount', JSON.stringify(joinRequests.length));
-                // console.log(joinRequests.length);
-                const updatedRequests = await Promise.all(
-                    joinRequests.map(async (request: JoinRequest) => {
-                        const studentDetails = await fetchStudentDetails(request.senderId, token);
-                        if (studentDetails) {
-                            return {
-                                ...request,
-                                studentName: studentDetails.studentName,
-                                studentCode: studentDetails.studentCode,
-                                studentDepartment: studentDetails.studentDepartment,
-                                campus: studentDetails.campus,
-                                phoneNumber: studentDetails.phoneNumber,
-                                skills: studentDetails.skills,
-                                studentLecturers: studentDetails.studentLecturers,
-                            };
-                        }
-                        return undefined;
-                    })
-                );
-                setDetailedRequests(updatedRequests.filter(request => request !== undefined) as DetailedJoinRequest[]);
+
+                const updatedRequests = joinRequests.map((request: JoinRequest) => ({
+                    ...request,
+                    email: request.senderEmail,
+                    studentName: request.senderName,
+                    studentCode: request.senderStudentCode,  // Assuming senderId can be used as studentCode
+                    studentDepartment: request.senderStudentDepartment
+                }));
+
+                setDetailedRequests(updatedRequests as DetailedJoinRequest[]);
             } else {
                 console.log('Token not found');
             }
@@ -205,7 +205,8 @@ const RequestListScreen = () => {
             setLoading(false);
         }
     };
-    
+
+
 
     const refreshPage = () => {
         setLoading(true);
@@ -216,12 +217,26 @@ const RequestListScreen = () => {
         loadStudentDetails();
     }, [teamId]);
 
-    const handleShowSkills = (skills: Skill[]) => {
-        const filteredSkills = skills.filter(skill => !skill.isDeleted);
-        setSelectedSkills(filteredSkills);
-        setShowSkillsModal(true);
-    };
+    const handleShowSkills = async (studentId: string) => {
+        try {
+            const token = await AsyncStorage.getItem('@userToken');
+            if (!token) {
+                console.log('Token not found');
+                return;
+            }
 
+            const studentDetails = await fetchStudentDetails(studentId, token);
+            if (studentDetails && studentDetails.skills) {
+                const filteredSkills = studentDetails.skills.filter(skill => !skill.isDeleted);
+                setSelectedSkills(filteredSkills);
+                setShowSkillsModal(true);
+            } else {
+                console.log('No skills found or student details are missing.');
+            }
+        } catch (error) {
+            console.error('Error fetching student details:', error);
+        }
+    };
     const confirmDeclineMember = (index: number) => {
         setSelectedRequestIndex(index);
         setShowConfirmDeclineModal(true);
@@ -232,7 +247,9 @@ const RequestListScreen = () => {
             const request = detailedRequests[selectedRequestIndex];
             const token = await AsyncStorage.getItem('@userToken');
             if (token && request) {
-                const success = await declineMember(request.id, token);
+                console.log(request.teamRequestId)
+                console.log(declineReason)
+                const success = await declineMember(request.teamRequestId, token, declineReason);
                 if (success) {
                     Alert.alert('Success', 'Member declined successfully');
                     refreshPage(); // Trigger a refresh without directly calling loadStudentDetails
@@ -245,7 +262,6 @@ const RequestListScreen = () => {
             setShowConfirmDeclineModal(false);
         }
     };
-
     const confirmApproveMember = (index: number) => {
         setSelectedRequestIndex(index);
         setShowConfirmApproveModal(true);
@@ -253,6 +269,23 @@ const RequestListScreen = () => {
 
     const handleApproveMember = async () => {
         if (selectedRequestIndex !== null && role.trim()) {
+            // List of valid roles
+            const validRoles = ['FE', 'BE', 'Mobile', 'UI/UX', 'Marketing'];
+
+            // Validate that the role is not empty
+            if (!role.trim()) {
+                Alert.alert('Validation Error', 'Member role cannot be empty');
+                return;
+            }
+            // Validate that the role is valid
+            const roleWords = role.trim().split(/\s*,\s*/); // Allow roles to be separated by commas
+            for (const word of roleWords) {
+                if (!validRoles.map(role => role.toLowerCase()).includes(word.toLowerCase())) {
+                    Alert.alert('Validation Error', 'Invalid member role. Please enter one of the following roles: FE, BE, Mobile, UI/UX, Marketing and must use , between 2 roles');
+                    return;
+                }
+            }
+
             const request = detailedRequests[selectedRequestIndex];
             const token = await AsyncStorage.getItem('@userToken');
             if (token && request) {
@@ -261,7 +294,7 @@ const RequestListScreen = () => {
                     Alert.alert('Success', 'Member approved and added successfully');
                     refreshPage(); // Trigger a refresh without directly calling loadStudentDetails
                 } else {
-                    Alert.alert('Error', 'Failed to approve the member');
+
                 }
             } else {
                 Alert.alert('Error', 'Token or request not found');
@@ -272,8 +305,9 @@ const RequestListScreen = () => {
         }
     };
 
+
     const toggleOptions = (index: number) => {
-             setVisibleOptions((prevVisibleOptions) => ({
+        setVisibleOptions((prevVisibleOptions) => ({
             ...prevVisibleOptions,
             [index]: !prevVisibleOptions[index],
         }));
@@ -300,7 +334,7 @@ const RequestListScreen = () => {
                     detailedRequests.map((request, index) => (
                         <View key={index} style={styles.requestCard}>
                             <View style={styles.cardHeader}>
-                                <Text>Sender Name: {request.studentName}</Text>
+                                <Text>Student Name: {request.studentName}</Text>
                                 <TouchableOpacity
                                     style={styles.optionsButton}
                                     onPress={() => toggleOptions(index)}>
@@ -311,18 +345,24 @@ const RequestListScreen = () => {
                                         <TouchableOpacity onPress={() => confirmApproveMember(index)}>
                                             <Text style={styles.optionText}>Approve Member</Text>
                                         </TouchableOpacity>
-                                        <TouchableOpacity onPress={() => confirmDeclineMember(index)}>
+                                        <TouchableOpacity onPress={() => {
+                                            setSelectedRequestIndex(index);
+                                            setShowConfirmDeclineModal(true);
+                                        }}>
                                             <Text style={styles.optionText}>Decline Member</Text>
                                         </TouchableOpacity>
                                     </View>
                                 )}
                             </View>
-                            <Text>Sender Code: {request.studentCode}</Text>
-                            <Text>Sender Department: {request.studentDepartment}</Text>
-                            <Text>Campus: {request.campus}</Text>
+                            <Text>Student Email: {request.email}</Text>
+                            <Text>Student Code: {request.studentCode}</Text>
+                            <Text>Student Department: {request.studentDepartment}</Text>
                             <Text>Created Date: {new Date(request.createdDate).toLocaleString()}</Text>
                             <Text>Comment: {request.comment}</Text>
-                            <TouchableOpacity style={styles.skillButton} onPress={() => handleShowSkills(request.skills)}>
+                            <TouchableOpacity
+                                style={styles.skillButton}
+                                onPress={() => handleShowSkills(request.senderId)}
+                            >
                                 <Text style={styles.skillButtonText}>Skill Details</Text>
                             </TouchableOpacity>
                         </View>
@@ -356,21 +396,24 @@ const RequestListScreen = () => {
                 </View>
             </Modal>
 
-            <Modal visible={showConfirmDeclineModal} animationType="slide" transparent={true}>
-                <View style={styles.modalContainer}>
-                    <View style={styles.modalContent}>
-                        <Text>Do you want to decline this member request?</Text>
-                        <View style={styles.modalButtonContainer}>
-                            <TouchableOpacity style={styles.confirmButton} onPress={handleDeclineMember}>
-                                <Text style={styles.confirmButtonText}>Yes</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.cancelButton} onPress={() => setShowConfirmDeclineModal(false)}>
-                                <Text style={styles.cancelButtonText}>No</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
+
+
+            <Dialog.Container visible={showConfirmDeclineModal}>
+                <Dialog.Title style={{ color: 'black' }}>Decline Member</Dialog.Title>
+                <Dialog.Description style={{ color: 'black' }}>
+                    Please enter the reason for declining the member.
+                </Dialog.Description>
+                <Dialog.Input
+                    placeholder="Reason"
+                    value={declineReason}
+                    onChangeText={setDeclineReason}
+                    placeholderTextColor="gray"
+                    style={{ color: 'black' }} // Set the input text color
+                />
+                <Dialog.Button label="Cancel" onPress={() => setShowConfirmDeclineModal(false)} />
+                <Dialog.Button label="Decline" onPress={handleDeclineMember} />
+            </Dialog.Container>
+
 
             <Modal visible={showConfirmApproveModal} animationType="slide" transparent={true}>
                 <View style={styles.modalContainer}>
@@ -397,6 +440,7 @@ const RequestListScreen = () => {
     );
 };
 
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -418,7 +462,7 @@ const styles = StyleSheet.create({
         left: 5,
     },
     backButtonText: {
-        fontSize: 33,
+        fontSize: 40,
         color: '#fff',
     },
     headerText: {

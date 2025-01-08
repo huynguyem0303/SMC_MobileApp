@@ -34,6 +34,7 @@ export default function RootLayout() {
         <Stack.Screen name="Authen/LoginStaffScreen" options={{ headerShown: false }} />
         <Stack.Screen name="MenuScreen" options={{ headerShown: false }} />
         <Stack.Screen name="StaffMenuScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="MentorLecturerMenuScreen" options={{ headerShown: false }} />
         <Stack.Screen name="RequestListScreen" options={{ headerShown: false }} />
         <Stack.Screen name="MyTeamScreen" options={{ headerShown: false }} />
         <Stack.Screen name="TimeLineScreen" options={{ headerShown: false }} />
@@ -43,9 +44,14 @@ export default function RootLayout() {
         <Stack.Screen name="Projects/ProjectDetailScreen" options={{ headerShown: false }} />
         <Stack.Screen name="Projects/MyProjectScreen" options={{ headerShown: false }} />
         <Stack.Screen name="Projects/ProjectListScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="Projects/MentorLecturerProjectListScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="Projects/MentorLecturerProjectDetailScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="Projects/FinanceScreen" options={{ headerShown: false }} />
         <Stack.Screen name="Appointments/CalendarScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="Appointments/MentorLecturerCalendarScreen" options={{ headerShown: false }} />
         <Stack.Screen name="Tasks/MilestoneScreen" options={{ headerShown: false }} />
         <Stack.Screen name="Tasks/TaskListScreen" options={{ headerShown: false }} />
+        <Stack.Screen name="Tasks/MentorLecturerProjectTaskListScreen" options={{ headerShown: false }} />
         <Stack.Screen name="Tasks/TaskDetailScreen" options={{ headerShown: false }} />
       </Stack>
     </ThemeProvider>

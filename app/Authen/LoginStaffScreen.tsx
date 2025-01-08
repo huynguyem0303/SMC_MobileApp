@@ -12,6 +12,11 @@ const LoginStaffScreen = () => {
   const router = useRouter();
 
   const handleLogin = async () => {
+    if (!email || !password) {
+      setErrorMessage('Email and password cannot be empty.');
+      return;
+    }
+
     setLoading(true);
     setErrorMessage(null); // Clear any previous error messages
 

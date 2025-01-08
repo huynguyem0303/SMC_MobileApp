@@ -22,7 +22,7 @@ const Overlay: React.FC<OverlayProps> = ({ onScanAgain }) => {
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerText}>Project Details</Text>
+          <Text style={styles.headerText}>QR Scan</Text>
         </View>
       </View>
       <View style={[styles.outer, styles.adjustOuter]}>
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
     left: 5,
   },
   backButtonText: {
-    fontSize: 33,
+    fontSize: 40,
     color: '#fff',
   },
   headerText: {

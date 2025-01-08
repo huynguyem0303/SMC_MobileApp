@@ -4,10 +4,13 @@ import getToken from './Jwt/getToken'; // Adjust the path according to your proj
 // Fetch account data using the given account ID
 export const fetchAccountData = async (accID) => {
   try {
+    const token = await AsyncStorage.getItem('@userToken');
+
     const response = await fetch(`https://smnc.site/api/Account/${accID}`, {
       method: 'GET',
       headers: {
         'accept': '*/*',
+        'Authorization': `Bearer ${token}`
       },
     });
 
@@ -17,11 +20,11 @@ export const fetchAccountData = async (accID) => {
       await AsyncStorage.setItem('@accountData', JSON.stringify(result.data));
       console.log('Account data stored successfully');
     } else {
-      console.error('Failed to fetch account data:', result.message);
+      console.log('Failed to fetch account data:', result.message);
       throw new Error(result.message || 'Failed to fetch account data');
     }
   } catch (error) {
-    console.error('Error fetching account data:', error);
+    console.log('Error fetching account data:', error);
     throw error;
   }
 };

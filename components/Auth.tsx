@@ -12,6 +12,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function () {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false); // Add loading state
+
   const router = useRouter();
 
   GoogleSignin.configure({
@@ -29,58 +31,97 @@ export default function () {
   };
 
   const handleSignIn = async () => {
+    if (loading) return; // Prevent multiple sign-ins
+    setLoading(true); // Set loading to true at the start
+  
     try {
       await GoogleSignin.hasPlayServices();
       const userInfo = await GoogleSignin.signIn();
-      console.log('UserInfo:', userInfo);
-
-      // Correctly extract idToken from userInfo.data
       const idToken = userInfo.data?.idToken;
-
+  
       if (!idToken) {
         await GoogleSignin.signOut();
         setErrorMessage('Failed to sign in');
         return;
       }
-
+  
       const googleCredential = auth.GoogleAuthProvider.credential(idToken);
+      // console.log(idToken);
       await auth().signInWithCredential(googleCredential);
-
+  
       const response = await fetch(`https://smnc.site/api/Auth/google-login?googleIdToken=${idToken}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
       });
-      console.log('idtoken', idToken);
-      const data = await response.json();
-      console.log('Response:', response);
-      console.log('API Response:', data);
-
+  
+      const responseBody = await response.text();
+      // console.log('Response Body:', responseBody);
+  
+      if (responseBody.trim() === '') {
+        throw new Error('Empty response body');
+      }
+  
+      let data;
+      try {
+        data = JSON.parse(responseBody);
+      } catch (e) {
+        throw new Error('Failed to parse JSON: ' + responseBody);
+      }
+  
       if (!response.ok) {
         await GoogleSignin.signOut();
-        setErrorMessage(data.errors || 'Failed to sign in');
+        const errorMessages = data.errors ? data.errors.join('\n') : 'Unknown error';
+        setErrorMessage(`${data.message}\n\n${errorMessages}`);
         return;
       }
-
-      const { access_token: accessToken, status, errors } = data.data;
-
+  
+      const { access_token: accessToken, status, errors, user } = data.data;
+  
       if (status === 2) {
         await GoogleSignin.signOut();
         setErrorMessage(errors || 'Failed to sign in');
         return;
       }
-
-      console.log('AccessToken:', accessToken);
       await storeToken(accessToken);
       const decodedToken = await getToken();
-      console.log('DecodedToken:', decodedToken);
       await fetchAccountData(decodedToken.id);
-      router.push("/MenuScreen");
-
+     
+     
+      
+      // console.log(data.data);
+  
+      // Determine role based on mentorId or lecturerId
+      let role = '';
+      if (user.mentorId != null) {
+        role = 'mentor';
+        await AsyncStorage.setItem('@id', JSON.stringify(user.mentorId));
+        await AsyncStorage.setItem('@role', JSON.stringify(role));
+        await AsyncStorage.setItem('@accountid', JSON.stringify(user.id));
+      } else if (user.lecturerId != null) {
+        role = 'lecturer';
+        await AsyncStorage.setItem('@id', JSON.stringify(user.lecturerId));
+        await AsyncStorage.setItem('@role', JSON.stringify(role));
+        await AsyncStorage.setItem('@accountid', JSON.stringify(user.id));
+      } else if (user.studentId != null) {
+        role = 'student';
+        await AsyncStorage.setItem('@id', JSON.stringify(user.studentId));
+      }
+  
+      // Routing based on role
+      if (role === 'mentor' || role === 'lecturer') {
+        router.push("/MentorLecturerMenuScreen");
+      } else if (role === 'student') {
+        router.push("/MenuScreen");
+      } else {
+        setErrorMessage('User role could not be determined');
+        await GoogleSignin.signOut();
+      }
+  
     } catch (error: any) {
       await GoogleSignin.signOut();
-      console.error('Sign-In Error:', error);
+      console.log('Sign-In Error:', error);
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
         setErrorMessage("User cancelled the login flow");
       } else if (error.code === statusCodes.IN_PROGRESS) {
@@ -88,10 +129,15 @@ export default function () {
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         setErrorMessage("Play services not available or outdated");
       } else {
-        setErrorMessage(error.message || 'An unexpected error occurred during sign-in.');
+        setErrorMessage( error.message || 'An unexpected error occurred during sign-in.');
       }
+    } finally {
+      setLoading(false); // Reset loading state at the end
     }
   };
+  
+  
+
 
   return (
     <View style={styles.container}>

@@ -12,6 +12,7 @@ type Project = {
   mentorsAndLecturers: { name: string; roleType: string }[];
   memberWantedStatus: boolean;
   memberWanted: string | null;
+  isDeleted:boolean;
 };
 
 const ProjectListScreen = () => {
@@ -45,8 +46,9 @@ const ProjectListScreen = () => {
         },
       });
       const data = await response.json();
-      setProjects(data.data.data);
-      console.log(data.data.data);
+      const filteredProjects = data.data.data.filter((project: Project) => !project.isDeleted);
+      setProjects(filteredProjects);
+      // console.log(data.data.data);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching project data:', error);
@@ -118,7 +120,7 @@ const ProjectListScreen = () => {
           </View>
           
           <View style={styles.inlineTextWrap}>
-            <Text style={styles.projectSectionTitle}>Member Wanted:</Text>
+            <Text style={styles.projectSectionTitle}>Recruitment requirements:</Text>
             {memberWantedArray.length > 0 ? (
               memberWantedArray.map((role, index) => (
                 <Text key={index} style={styles.personName}>{role}</Text>
@@ -176,7 +178,7 @@ const ProjectListScreen = () => {
               { label: 'Proptech', value: 'Proptech' },
               { label: 'Agtech', value: 'Agtech' },
               { label: 'Logistics and Supply Chain', value: 'LogisticsAndSupplyChain' },
-              { label: 'Entertainment and Media', value: 'EntertainmentAndMedia' },
+              { label: 'Entertainment & Media', value: 'EntertainmentAndMedia' },
               { label: 'Mobility', value: 'Mobility' },
               { label: 'Cybersecurity', value: 'Cybersecurity' },
               { label: 'Others', value: 'Others' },
@@ -192,10 +194,10 @@ const ProjectListScreen = () => {
               { label: 'FE', value: 'FE' },
               { label: 'BE', value: 'BE' },
               { label: 'Mobile', value: 'Mobile' },
-              { label: 'Web Design', value: 'Web Design' },
+              { label: 'UI/UX', value: 'UI/UX' },
               { label: 'Marketing', value: 'Marketing' },
             ]}
-            placeholder={{ label: 'Select a department wanted', value: null }}
+            placeholder={{ label: 'Select member role wanted', value: null }}
             style={pickerSelectStyles}
           />
         </View>
@@ -236,7 +238,7 @@ const styles = StyleSheet.create({
         left: 5,
     },
     backButtonText: {
-        fontSize: 33,
+        fontSize: 40,
         color: '#fff',
     },
     detailButton: {

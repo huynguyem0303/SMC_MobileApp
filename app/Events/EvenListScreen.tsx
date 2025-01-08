@@ -96,7 +96,11 @@ const EventListScreen = () => {
 
   const renderEventItem = ({ item }: { item: Event }) => (
     <View style={styles.eventContainer}>
-      <Image source={{ uri: item.coverImage }} style={styles.eventImage} />
+      {item.coverImage ? (
+                <Image source={{ uri: item.coverImage }} style={styles.eventImage} />
+            ) : (
+                <Text style={styles.noImageText}>No image available</Text>
+            )}
       <View style={styles.eventDetails}>
         <Text style={styles.eventTitle}>{item.title}</Text>
         <View style={styles.inlineText}>
@@ -202,7 +206,7 @@ const styles = StyleSheet.create({
     left: 5,
   },
   backButtonText: {
-    fontSize: 33,
+    fontSize: 40,
     color: '#fff',
   },
   headerText: {
@@ -340,6 +344,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
   },
+  noImageText: {
+    fontSize: 16,
+    color: 'gray',
+    marginEnd: 10,
+    marginTop:130
+}
 });
 
 const pickerSelectStyles = {

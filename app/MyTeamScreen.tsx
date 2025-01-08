@@ -151,7 +151,7 @@ const updateMemberRole = async (member: Member, userToken: string) => {
         });
 
         const responseText = await response.text();
-        // console.log('Server Response:', responseText);
+        console.log('Server Response:', responseText);
 
         if (!response.ok) {
             throw new Error('Failed to update member role');
@@ -167,6 +167,8 @@ const updateMemberRole = async (member: Member, userToken: string) => {
         throw error;
     }
 };
+
+
 
 
 const MyTeamScreen = () => {
@@ -301,23 +303,47 @@ const MyTeamScreen = () => {
 
     const handleSaveRole = async () => {
         if (selectedMember) {
-            try {
-                const token = await AsyncStorage.getItem('@userToken');
-                if (token) {
-                    const updatedMember = { ...selectedMember, memberRole: newRole };
-                    await updateMemberRole(updatedMember, token);
-                    // Refresh the team details after updating the role
-                    await refreshTeamDetails(token);
-                    Alert.alert('Success', 'Member role updated successfully');
-                }
-            } catch (error) {
-                console.error('Error updating member role:', error);
-                Alert.alert('Error', 'Failed to update member role');
+          try {
+            const token = await AsyncStorage.getItem('@userToken');
+      
+            // List of valid roles
+            const validRoles = ['FE', 'BE', 'Mobile', 'UI/UX', 'Marketing'];
+      
+            // Validate that the newRole is not empty
+            if (!newRole.trim()) {
+              Alert.alert('Validation Error', 'Member role cannot be empty');
+              return;
             }
+      
+            // Split the newRole input into roles separated by commas
+            const roleWords = newRole.trim().split(/\s*,\s*/);
+            for (const word of roleWords) {
+              // Convert both the input role and valid roles to lowercase for comparison
+              if (!validRoles.map(role => role.toLowerCase()).includes(word.toLowerCase())) {
+                Alert.alert('Validation Error', 'Invalid member role. Please enter one of the following roles: FE, BE, Mobile, UI/UX, Marketing and must use , between 2 roles');
+                return;
+              }
+            }
+      
+            if (token) {
+              const updatedMember = { ...selectedMember, memberRole: newRole };
+              await updateMemberRole(updatedMember, token);
+              // Refresh the team details after updating the role
+              await refreshTeamDetails(token);
+              Alert.alert('Success', 'Member role updated successfully');
+            }
+          } catch (error) {
+            console.error('Error updating member role:', error);
+            Alert.alert('Error', 'Failed to update member role');
+          }
         }
         setEditRoleMode(false);
         setModalVisible(false);
-    };
+      };
+      
+      
+    
+    
     const fetchJoinRequests = async (teamId: string, token: string) => {
         try {
             const response = await fetch(`https://smnc.site/api/TeamRequest/search?PageSize=10&TeamId=${teamId}`, {
@@ -336,7 +362,7 @@ const MyTeamScreen = () => {
                 throw new Error('Failed to fetch join requests');
             }
         } catch (error) {
-            console.error('Error fetching join requests:', error);
+            console.error('Error fetching join requests:', teamId);
             throw error;
         }
     };
@@ -540,7 +566,7 @@ const styles = StyleSheet.create({
         left: 5,
     },
     backButtonText: {
-        fontSize: 33,
+        fontSize: 40,
         color: '#fff',
     },
     headerText: {

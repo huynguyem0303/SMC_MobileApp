@@ -3,7 +3,7 @@ import { CameraView, Camera } from 'expo-camera';
 import { Stack } from 'expo-router';
 import { AppState, Alert, Platform, SafeAreaView, StatusBar, StyleSheet, View, Text, Button } from 'react-native';
 import Overlay from './Overlay';
-
+import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function QrScanScreen() {
   const qrLock = useRef(false);
   const appState = useRef(AppState.currentState);
@@ -48,10 +48,12 @@ export default function QrScanScreen() {
 
       if (id && studentId) {
         try {
+          const token = await AsyncStorage.getItem('@userToken');
           const response = await fetch(`https://smnc.site/api/Events/UpdateAttendance?id=${id}&studentId=${studentId}`, {
             method: 'GET',
             headers: {
               'Accept': '*/*',
+              'Authorization': `Bearer ${token}`,
             },
           });
 
@@ -60,7 +62,7 @@ export default function QrScanScreen() {
           } else {
             Alert.alert('Failure', 'Failed to check attendance.Please use the right Qr code to scran', [{ text: 'OK', onPress: () => handleScanAgain() }]);
           }
-        } catch (error) {
+        } catch (error:any) {
           Alert.alert('Error', 'An error occurred while updating attendance.', [{ text: 'OK', onPress: () => handleScanAgain() }]);
         }
       } else {
