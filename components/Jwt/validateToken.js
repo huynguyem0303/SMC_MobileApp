@@ -17,7 +17,7 @@ const validateToken = async (idToken) => {
         console.error('Login failed:', data.message, data.errors);
         return null;
       }
-      console.log(data.data.access_token)
+      // console.log(data.data.access_token)
       return data.data.access_token;
     } catch (error) {
       console.error('Error validating token:', error);

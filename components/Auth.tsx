@@ -77,13 +77,14 @@ export default function () {
         return;
       }
   
-      const { access_token: accessToken, status, errors, user } = data.data;
-  
+      const { access_token: accessToken, status, errors, user,expires } = data.data;
+      
       if (status === 2) {
         await GoogleSignin.signOut();
         setErrorMessage(errors || 'Failed to sign in');
         return;
       }
+      await AsyncStorage.setItem('@expires', expires);
       await storeToken(accessToken);
       const decodedToken = await getToken();
       await fetchAccountData(decodedToken.id);

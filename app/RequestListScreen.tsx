@@ -3,6 +3,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Modal, Alert, Tex
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Dialog from 'react-native-dialog';
+import { checkToken } from '../components/checkToken';
+import { showSessionExpiredAlert } from '../components/alertUtils'; 
 // Define the JoinRequest and Student interfaces
 interface JoinRequest {
     type: string;
@@ -56,7 +58,7 @@ const fetchStudentDetails = async (accountId: string, token: string): Promise<St
             throw new Error('Failed to fetch student details');
         }
     } catch (error) {
-        console.error('Error fetching student details:', error);
+        console.log('Error fetching student details:', error);
         return null;
     }
 };
@@ -80,7 +82,7 @@ const fetchJoinRequests = async (teamId: string, token: string) => {
 
         }
     } catch (error) {
-        console.error('Error fetching join requests:', error);
+        console.log('Error fetching join requests:', error);
         throw error;
     }
 };
@@ -104,11 +106,11 @@ const declineMember = async (requestId: any, token: any, reason: any) => {
             return true;
         } else {
             const errorData = await response.json();
-            console.error('Error response:', errorData);
+            console.log('Error response:', errorData);
             return false;
         }
     } catch (error) {
-        console.error('Error declining member:', error);
+        console.log('Error declining member:', error);
         return false;
     }
 };
@@ -157,7 +159,7 @@ const approveMember = async (request: any, token: any, role: any) => {
         }
         return true;
     } catch (error: any) {
-        console.error('Error approving member:', error);
+        console.log('Error approving member:', error);
         Alert.alert('Error', error.message);
         return false;
     }
@@ -183,7 +185,7 @@ const RequestListScreen = () => {
 
     const loadStudentDetails = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
             if (token) {
                 const joinRequests = await fetchJoinRequests(typeof teamId === 'string' ? teamId : teamId[0], token);
 
@@ -197,10 +199,10 @@ const RequestListScreen = () => {
 
                 setDetailedRequests(updatedRequests as DetailedJoinRequest[]);
             } else {
-                console.log('Token not found');
+                showSessionExpiredAlert(router);
             }
         } catch (error) {
-            console.error('Error loading student details:', error);
+            console.log('Error loading student details:', error);
         } finally {
             setLoading(false);
         }
@@ -219,9 +221,9 @@ const RequestListScreen = () => {
 
     const handleShowSkills = async (studentId: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
             if (!token) {
-                console.log('Token not found');
+                showSessionExpiredAlert(router);
                 return;
             }
 
@@ -234,7 +236,7 @@ const RequestListScreen = () => {
                 console.log('No skills found or student details are missing.');
             }
         } catch (error) {
-            console.error('Error fetching student details:', error);
+            console.log('Error fetching student details:', error);
         }
     };
     const confirmDeclineMember = (index: number) => {
@@ -244,67 +246,88 @@ const RequestListScreen = () => {
 
     const handleDeclineMember = async () => {
         if (selectedRequestIndex !== null) {
-            const request = detailedRequests[selectedRequestIndex];
-            const token = await AsyncStorage.getItem('@userToken');
-            if (token && request) {
-                console.log(request.teamRequestId)
-                console.log(declineReason)
-                const success = await declineMember(request.teamRequestId, token, declineReason);
-                if (success) {
-                    Alert.alert('Success', 'Member declined successfully');
-                    refreshPage(); // Trigger a refresh without directly calling loadStudentDetails
-                } else {
-                    Alert.alert('Error', 'Failed to decline the member');
-                }
+          const request = detailedRequests[selectedRequestIndex];
+          const token = await checkToken();
+          if (token === null) {
+            showSessionExpiredAlert(router);
+            return;
+          }
+          if (!request) {
+            Alert.alert('Error', 'Request not found');
+            return;
+          }
+          try {
+            const success = await declineMember(request.teamRequestId, token, declineReason);
+            if (success) {
+              Alert.alert('Success', 'Member declined successfully');
+              refreshPage(); // Trigger a refresh without directly calling loadStudentDetails
             } else {
-                Alert.alert('Error', 'Token or request not found');
+              Alert.alert('Error', 'Failed to decline the member');
             }
+          } catch (error) {
+            Alert.alert('Error', 'An unexpected error occurred');
+            console.log('Decline member error:', error);
+          } finally {
             setShowConfirmDeclineModal(false);
+          }
         }
-    };
+      };
+      
     const confirmApproveMember = (index: number) => {
         setSelectedRequestIndex(index);
         setShowConfirmApproveModal(true);
     };
 
     const handleApproveMember = async () => {
-        if (selectedRequestIndex !== null && role.trim()) {
-            // List of valid roles
-            const validRoles = ['FE', 'BE', 'Mobile', 'UI/UX', 'Marketing'];
-
-            // Validate that the role is not empty
-            if (!role.trim()) {
-                Alert.alert('Validation Error', 'Member role cannot be empty');
-                return;
-            }
-            // Validate that the role is valid
-            const roleWords = role.trim().split(/\s*,\s*/); // Allow roles to be separated by commas
-            for (const word of roleWords) {
-                if (!validRoles.map(role => role.toLowerCase()).includes(word.toLowerCase())) {
-                    Alert.alert('Validation Error', 'Invalid member role. Please enter one of the following roles: FE, BE, Mobile, UI/UX, Marketing and must use , between 2 roles');
-                    return;
-                }
-            }
-
-            const request = detailedRequests[selectedRequestIndex];
-            const token = await AsyncStorage.getItem('@userToken');
-            if (token && request) {
-                const success = await approveMember(request, token, role);
-                if (success) {
-                    Alert.alert('Success', 'Member approved and added successfully');
-                    refreshPage(); // Trigger a refresh without directly calling loadStudentDetails
-                } else {
-
-                }
-            } else {
-                Alert.alert('Error', 'Token or request not found');
-            }
-            setShowConfirmApproveModal(false);
-        } else {
-            Alert.alert('Input Required', 'Please enter a member role');
+        if (selectedRequestIndex === null) {
+          Alert.alert('Input Required', 'Please select a request');
+          return;
         }
-    };
-
+      
+        if (!role.trim()) {
+          Alert.alert('Validation Error', 'Member role cannot be empty');
+          return;
+        }
+      
+        // List of valid roles
+        const validRoles = ['FE', 'BE', 'Mobile', 'UI/UX', 'Marketing'];
+      
+        // Validate that the role is valid
+        const roleWords = role.trim().split(/\s*,\s*/); // Allow roles to be separated by commas
+        for (const word of roleWords) {
+          if (!validRoles.map(role => role.toLowerCase()).includes(word.toLowerCase())) {
+            Alert.alert('Validation Error', 'Invalid member role. Please enter one of the following roles: FE, BE, Mobile, UI/UX, Marketing and use commas between multiple roles');
+            return;
+          }
+        }
+        const request = detailedRequests[selectedRequestIndex];
+        const token = await checkToken();
+        if (token === null) {
+          showSessionExpiredAlert(router);
+          return;
+        }
+      
+        if (!request) {
+          Alert.alert('Error', 'Request not found');
+          return;
+        }
+      
+        try {
+          const success = await approveMember(request, token, role);
+          if (success) {
+            Alert.alert('Success', 'Member approved and added successfully');
+            refreshPage(); // Trigger a refresh without directly calling loadStudentDetails
+          } else {
+            Alert.alert('Error', 'Failed to approve the member');
+          }
+        } catch (error) {
+          Alert.alert('Error', 'An unexpected error occurred');
+          console.log('Approve member error:', error);
+        } finally {
+          setShowConfirmApproveModal(false);
+        }
+      };
+      
 
     const toggleOptions = (index: number) => {
         setVisibleOptions((prevVisibleOptions) => ({
@@ -394,10 +417,7 @@ const RequestListScreen = () => {
                         </TouchableOpacity>
                     </View>
                 </View>
-            </Modal>
-
-
-
+            </Modal> 
             <Dialog.Container visible={showConfirmDeclineModal}>
                 <Dialog.Title style={{ color: 'black' }}>Decline Member</Dialog.Title>
                 <Dialog.Description style={{ color: 'black' }}>
@@ -413,8 +433,6 @@ const RequestListScreen = () => {
                 <Dialog.Button label="Cancel" onPress={() => setShowConfirmDeclineModal(false)} />
                 <Dialog.Button label="Decline" onPress={handleDeclineMember} />
             </Dialog.Container>
-
-
             <Modal visible={showConfirmApproveModal} animationType="slide" transparent={true}>
                 <View style={styles.modalContainer}>
                     <View style={styles.modalContent}>

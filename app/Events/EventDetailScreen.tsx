@@ -3,6 +3,8 @@ import { View, Text, Image, TouchableOpacity, StyleSheet, ScrollView, ActivityIn
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import getToken from '../../components/Jwt/getToken';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils';
 type Event = {
     title: string;
     description: string;
@@ -53,7 +55,7 @@ const EventDetailScreen = () => {
             if (decodedToken) {
                 setUserId(decodedToken.id);
             } else {
-                console.log('No token found');
+                // console.log('No token found');
             }
         } catch (error) {
             console.log('Error retrieving token: ', error);
@@ -66,7 +68,12 @@ const EventDetailScreen = () => {
     }, [id, studentId]);
     const fetchStudentId = async (userId: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/Account/${userId}`, {
                 method: 'GET',
                 headers: {
@@ -77,19 +84,23 @@ const EventDetailScreen = () => {
             const data = await response.json();
             setStudentId(data.data.student.id);
         } catch (error) {
-            console.error('Error fetching student ID:', error);
+            console.log('Error fetching student ID:', error);
         }
     };
     const fetchAttendanceStatus = async () => {
         try {
             const storedId = await AsyncStorage.getItem('@id');
             if (!storedId) {
-                console.error('Stored ID is null');
+                console.log('Stored ID is null');
                 return;
             }
             const studentId = JSON.parse(storedId);
-            const token = await AsyncStorage.getItem('@userToken');
-    
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/StudentAttendance?StudentId=${studentId}&EventId=${id}`, {
                 method: 'GET',
                 headers: {
@@ -97,8 +108,8 @@ const EventDetailScreen = () => {
                     'Authorization': `Bearer ${token}`,
                 },
             });
-            console.log("stuid", studentId);
-            console.log("eventid", id);
+            // console.log("stuid", studentId);
+            // console.log("eventid", id);
             const data = await response.json();
     
             if (data.status) {
@@ -109,10 +120,10 @@ const EventDetailScreen = () => {
                     setAttendanceStatus(null); // No attendance data available
                 }
             } else {
-                console.error(data.message);
+                // console.log(data.message);
             }
         } catch (error) {
-            console.error('Error fetching attendance status:', error);
+            console.log('Error fetching attendance status:', error);
         }
     };
     
@@ -123,7 +134,7 @@ const EventDetailScreen = () => {
             setEvent(data.data);
             setLoading(false);
         } catch (error) {
-            console.error('Error fetching event details:', error);
+            console.log('Error fetching event details:', error);
             setLoading(false);
         }
     };
@@ -131,7 +142,7 @@ const EventDetailScreen = () => {
     const handleRegister = async () => {
          setConfirmVisible(false);
         if (!id || !studentId || !userId) return;
-        console.log(id);
+        // console.log(id);
 
         try {
             const attendanceResponse =await registerAttendance(id.toString(), studentId);
@@ -146,7 +157,12 @@ const EventDetailScreen = () => {
                     return;
                 }
             }
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/Events/${id}/Register`, {
                 method: 'PATCH',
                 headers: {
@@ -163,14 +179,17 @@ const EventDetailScreen = () => {
                 Alert.alert('Registration Failed', 'There was an issue registering for the event. Please try again later.');
             }
         } catch (error) {
-            console.error('Error during registration:', error);
+            // console.log('Error during registration:', error);
             Alert.alert('Registration Failed', 'There was an issue registering for the event. Please try again later.');
         }
     };
 
     const registerAttendance = async (eventId: string, studentId: string): Promise<{ ok: boolean }> => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+            }
             const response = await fetch('https://smnc.site/api/StudentAttendance', {
                 method: 'POST',
                 headers: {
@@ -192,13 +211,13 @@ const EventDetailScreen = () => {
                 if (errorResponse.errors && errorResponse.errors.includes('This attendance has already existed.')) {
                     Alert.alert('Error', 'Attendance is already registered.');
                 } else {
-                    console.error('Error registering attendance:', errorResponse);
+                    // console.log('Error registering attendance:', errorResponse);
                     Alert.alert('Error', 'Failed to register attendance. Please try again later.');
                 }
             }
             return response;  // Return the original response object
         } catch (error) {
-            console.error('Error registering attendance:', error);
+            // console.log('Error registering attendance:', error);
             Alert.alert('Error', 'Failed to register attendance. Please try again later.');
             return { ok: false };  // Ensure an object with 'ok' property is always returned
         }
@@ -208,7 +227,10 @@ const EventDetailScreen = () => {
 
     const generateQrCode = async (eventId: string, userId: string,studentId: string): Promise<{ ok: boolean }> => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+            }
             const response = await fetch(`https://smnc.site/api/Events/${eventId}/GenerateQrCode?studentId=${studentId}&accountId=${userId}`, {
                 method: 'GET',
                 headers: {
@@ -219,12 +241,12 @@ const EventDetailScreen = () => {
     
             if (!response.ok) {
                 const errorResponse = await response.json();
-                console.error('Error generating QR code:', errorResponse);
+                console.log('Error generating QR code:', errorResponse);
             }
     
             return response;
         } catch (error) {
-            console.error('Error generating QR code:', error);
+            console.log('Error generating QR code:', error);
             return { ok: false }; // Ensure an object with 'ok' property is always returned
         }
     };

@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, Linki
 import moment from 'moment';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 interface Event {
     startTime: string;
     endTime: string;
@@ -102,7 +103,12 @@ const MentorLecturerCalendarScreen = () => {
 
     const fetchEvents = async (startTime: string, endTime: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             setEvents({});
             if (!token) {
                 Alert.alert('No token found, please login.');
@@ -113,7 +119,7 @@ const MentorLecturerCalendarScreen = () => {
             const creatorId = storedId ? JSON.parse(storedId) : null;
 
             if (!creatorId) {
-                console.error('Mentor ID or Lecturer ID is missing');
+                console.log('Mentor ID or Lecturer ID is missing');
                 return;
             }
 
@@ -142,10 +148,10 @@ const MentorLecturerCalendarScreen = () => {
                 setEvents(filteredData);
 
             } else {
-                console.error('Unexpected data format:', data);
+                console.log('Unexpected data format:', data);
             }
         } catch (error) {
-            console.error('Error fetching appointments:', error);
+            console.log('Error fetching appointments:', error);
         } finally {
             setLoading(false);
         }
@@ -204,7 +210,12 @@ const MentorLecturerCalendarScreen = () => {
             const endTime = moment(`${selectedDate} ${slotEnd}`, 'YYYY-MM-DD HH:mm').format('YYYY-MM-DDTHH:mm:ss');
 
             try {
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken();
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
+                }
+
                 const response = await fetch('https://smnc.site/api/AppointmentSlots', {
                     method: 'POST',
                     headers: {
@@ -231,7 +242,7 @@ const MentorLecturerCalendarScreen = () => {
                     Alert.alert('Failed to create appointment slot.');
                 }
             } catch (error) {
-                console.error('Error creating appointment slot:', error);
+                // console.log('Error creating appointment slot:', error);
                 Alert.alert('An error occurred while creating the appointment slot.');
             }
         } else {
@@ -278,7 +289,12 @@ const MentorLecturerCalendarScreen = () => {
             const endTime = moment(`${selectedDate} ${slotEnd}`, 'YYYY-MM-DD HH:mm').format('YYYY-MM-DDTHH:mm:ss');
 
             try {
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken();
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
+                }
+
                 const response = await fetch(`https://smnc.site/api/AppointmentSlots/${id}`, {
                     method: 'PUT',
                     headers: {
@@ -306,7 +322,7 @@ const MentorLecturerCalendarScreen = () => {
                     Alert.alert('Update Failed', 'Failed to update the appointment slot.');
                 }
             } catch (error) {
-                console.error('Error updating appointment slot:', error);
+                // console.log('Error updating appointment slot:', error);
                 Alert.alert('An error occurred while updating the appointment slot.');
             }
         } else {
@@ -318,7 +334,12 @@ const MentorLecturerCalendarScreen = () => {
     const handleDeleteAppointmentSlot = async (id: any) => {
         setLoading(true);
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/AppointmentSlots/${id}`, {
                 method: 'DELETE',
                 headers: {
@@ -337,7 +358,7 @@ const MentorLecturerCalendarScreen = () => {
 
             }
         } catch (error) {
-            console.error('Error deleting appointment slot:', error);
+            // console.log('Error deleting appointment slot:', error);
             Alert.alert('An error occurred while deleting the appointment slot.');
         }
         setLoading(false);
@@ -382,7 +403,12 @@ const MentorLecturerCalendarScreen = () => {
 
             }
             setLoading(true);
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/AppointmentSlots/${id}/JoinMeeting`, {
                 method: 'POST',
                 headers: {
@@ -405,7 +431,7 @@ const MentorLecturerCalendarScreen = () => {
                 Alert.alert('Join Meeting Failed', 'Failed to join the meeting.');
             }
         } catch (error) {
-            console.error('Error joining meeting:', error);
+            // console.log('Error joining meeting:', error);
             Alert.alert('An error occurred while joining the meeting.');
         } finally {
             setLoading(false);
@@ -427,7 +453,12 @@ const MentorLecturerCalendarScreen = () => {
 
     const getAttendance = async (eventId: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/AppointmentSlots/${eventId}`, {
                 method: 'GET',
                 headers: {
@@ -437,7 +468,7 @@ const MentorLecturerCalendarScreen = () => {
             });
     
             const data: ApiResponse = await response.json();
-            console.log(eventId);
+            // console.log(eventId);
             
             if (data.status) {
                 const studentAttendances = data.data.studentAttendances
@@ -462,10 +493,10 @@ const MentorLecturerCalendarScreen = () => {
                 setSwitchValues(initialSwitchValues);
                 setIsModalVisible(true);
             } else {
-                console.error(data.message);
+                console.log(data.message);
             }
         } catch (error) {
-            console.error('Error fetching attendance:', error);
+            console.log('Error fetching attendance:', error);
         }
     };
     
@@ -476,7 +507,11 @@ const MentorLecturerCalendarScreen = () => {
 
     const updateStatus = async (id: string, newStatus: number): Promise<boolean> => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+          
+            }
             const url = `https://smnc.site/api/StudentAttendance/${id}`;
 
             const response = await fetch(url, {
@@ -500,7 +535,7 @@ const MentorLecturerCalendarScreen = () => {
                 return false;
             }
         } catch (error) {
-            console.error('Error updating status:', error);
+            // console.log('Error updating status:', error);
             Alert.alert('Error', 'An unexpected error occurred.');
             return false;
         }
@@ -628,8 +663,8 @@ const MentorLecturerCalendarScreen = () => {
 
 
     useEffect(() => {
-        console.log("Selected Date: ", selectedDate);
-        console.log("Selected Day: ", selectedDay);
+        // console.log("Selected Date: ", selectedDate);
+        // console.log("Selected Day: ", selectedDay);
     }, [selectedDay, selectedDate]);
     if (loading) {
         return <ActivityIndicator size="large" color="#0000ff" />;

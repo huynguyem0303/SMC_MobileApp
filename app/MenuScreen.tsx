@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Animated, Dimensions, BackHandler, SafeAreaView, StatusBar, ActivityIndicator,Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import getToken from '../components/Jwt/getToken'; // Adjust the path if necessary
-import fetchAccountData from '../components/fetchAccountData'; //
+import { checkToken } from '../components/checkToken'; //
 const { width } = Dimensions.get('window');
 import { useIsFocused } from '@react-navigation/native';
 // Define types for the parameters and response data
@@ -42,12 +42,12 @@ const fetchCourseInstanceDetails = async (courseInstanceId: string, userToken: s
         });
         const data = await response.json();
         if (data.status === false) {
-            console.error('Error fetching course instance details:', data.message, data.errors);
+            console.log('Error fetching course instance details:', data.message, data.errors);
             return null;
         }
         return data;
     } catch (error) {
-        console.error('Error fetching course instance details:', error);
+        console.log('Error fetching course instance details:', error);
         throw error;
     }
 };
@@ -65,7 +65,7 @@ const fetchTeamDetails = async (courseId: string, semesterId: string, userToken:
         });
         const data = await response.json();
         if (data.status === false) {
-            // console.error('Error fetching team details:', data.message, data.errors);
+            // console.log('Error fetching team details:', data.message, data.errors);
             return null;
         }
         const members: Member[] = data.data.members.map((member: any) => ({
@@ -81,7 +81,7 @@ const fetchTeamDetails = async (courseId: string, semesterId: string, userToken:
 
         return data;
     } catch (error) {
-        console.error('Error fetching team details:', error);
+        console.log('Error fetching team details:', error);
         throw error;
     }
 };
@@ -112,7 +112,7 @@ const MenuScreen = () => {
         const retrieveToken = async () => {
             try {
                 const decodedToken = await getToken(); // Use getToken to retrieve and decode the token
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken()
 
                 if (token) {
                     setUserToken(token);
@@ -142,8 +142,8 @@ const MenuScreen = () => {
                                     semesterId: courseDetails.data.semesterId,
                                 });
                                 // console.log('Course Details:', courseDetails);
-                                console.log("Course:", courseDetails.data.courseId);
-                                console.log("Semester:", courseDetails.data.semesterId);
+                                // console.log("Course:", courseDetails.data.courseId);
+                                // console.log("Semester:", courseDetails.data.semesterId);
                                 if (courseDetails.data.courseId && courseDetails.data.semesterId) {
                                     // Fetch team details using courseId and semesterId
 
@@ -219,10 +219,10 @@ const MenuScreen = () => {
             await AsyncStorage.removeItem('@id');
             await GoogleSignin.revokeAccess(); // Optional: Revoke access to Google account
             await GoogleSignin.signOut();
-            console.log('User signed out');
+            // console.log('User signed out');
             router.replace('/Authen/LoginScreen'); // Ensure this route exists
         } catch (error) {
-            console.error('Error logging out:', error);
+            console.log('Error logging out:', error);
         }
     };
     const handleProjectList = () => {

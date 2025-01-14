@@ -3,7 +3,8 @@ import { View, Text, FlatList, Image, TouchableOpacity, StyleSheet, ActivityIndi
 import axios from 'axios';
 import { useRouter } from 'expo-router';
 import RNPickerSelect from 'react-native-picker-select';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 type Event = {
   id: string;
   title: string;
@@ -51,10 +52,10 @@ const EventListScreen = () => {
         setTotalPages(Math.ceil(data.length / 10)); // Calculate total pages based on number of events and 10 events per page
         setResultCount(data.length); // Update result count
       } else {
-        console.error('Unexpected data format:', data);
+        console.log('Unexpected data format:', data);
       }
     } catch (error) {
-      console.error('Error fetching events:', error);
+      console.log('Error fetching events:', error);
     } finally {
       setLoading(false);
     }

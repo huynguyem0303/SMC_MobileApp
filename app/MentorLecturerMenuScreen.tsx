@@ -7,7 +7,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Animated, 
 import { useRouter } from 'expo-router';
 import getToken from '../components/Jwt/getToken';
 const { width } = Dimensions.get('window');
-
+import { checkToken } from '../components/checkToken'; 
+import { showSessionExpiredAlert } from '../components/alertUtils'; 
 const MentorLecturerMenuScreen = () => {
     const router = useRouter();
     const slideAnim = useRef(new Animated.Value(width)).current; // Initial value for slide: off-screen
@@ -23,6 +24,7 @@ const MentorLecturerMenuScreen = () => {
         }).start(); // Retrieve token and set email 
         const retrieveToken = async () => {
             try {
+                const token = await checkToken();
                 const decodedToken = await getToken(); // Use getToken to retrieve and decode the token 
                 if (decodedToken) {
                     setEmail(decodedToken.email);
@@ -61,10 +63,10 @@ const MentorLecturerMenuScreen = () => {
             await AsyncStorage.removeItem('@accountid');
             await GoogleSignin.revokeAccess(); // Optional: Revoke access to Google account
             await GoogleSignin.signOut();
-            console.log('User signed out');
+            // console.log('User signed out');
             router.replace('/Authen/LoginScreen'); // Ensure this route exists 
         } catch (error) {
-            console.error('Error Log out:', error);
+            console.log('Error Log out:', error);
         }
     };
 

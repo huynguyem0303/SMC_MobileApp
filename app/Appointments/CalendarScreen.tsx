@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Modal, Linki
 import moment from 'moment';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { checkToken } from '../../components/checkToken';
+import { showSessionExpiredAlert } from '../../components/alertUtils';
 interface Event {
     startTime: string;
     endTime: string;
@@ -25,6 +26,7 @@ interface MentorOrLecturer {
     accountId: string;
     name: string;
     roleType: string;
+    roleTypeEnum:number;
     description: string;
 }
 
@@ -49,7 +51,7 @@ const CalendarScreen = () => {
     const [confirmVisible, setConfirmVisible] = useState<boolean>(false);
     const [cancelVisible, setCancelVisible] = useState<boolean>(false);
     const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-    const [mentorIds, setMentorIds] = useState<string[]>([]); 
+    const [mentorIds, setMentorIds] = useState<string[]>([]);
     const [lecturerIds, setLecturerIds] = useState<string[]>([]);
     const [project, setProject] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -59,13 +61,14 @@ const CalendarScreen = () => {
 
     const fetchProjectDetails = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
-    
-            if (!token) {
-                Alert.alert('No token found, please login.');
+            const token = await checkToken();
+
+            if (token === null) {
+                showSessionExpiredAlert(router);
                 return;
             }
-    
+
+
             const response = await fetch(`https://smnc.site/api/Projects/CurrentUserProject?courseId=${courseId}&semesterId=${semesterId}`, {
                 method: 'GET',
                 headers: {
@@ -73,54 +76,56 @@ const CalendarScreen = () => {
                     'Authorization': `Bearer ${token}`,
                 },
             });
-    
+
             const data = await response.json();
-    
+
             if (data.status && data.data.data.length > 0) {
                 const projectData = data.data.data[0];
                 setProject(projectData);
-    
+
                 const mentors: string[] = [];
                 const lecturers: string[] = [];
-    
-                projectData.mentorsAndLecturers.forEach((mentor: MentorOrLecturer) => {
-                    if (mentor.roleType === 'Mentor') {
-                        mentors.push(mentor.accountId);
-                    } else if (mentor.roleType === 'Lecturer') {
-                        lecturers.push(mentor.accountId);
-                    }
-                });
-    
+
+                projectData.mentorsAndLecturers
+                    .filter((mentor: MentorOrLecturer) => mentor.roleTypeEnum === 1 || mentor.roleTypeEnum === 0)
+                    .forEach((mentor: MentorOrLecturer) => {
+                        if (mentor.roleType === 'Mentor') {
+                            mentors.push(mentor.accountId);
+                        } else if (mentor.roleType === 'Lecturer') {
+                            lecturers.push(mentor.accountId);
+                        }
+                    });
                 setMentorIds(mentors);
                 setLecturerIds(lecturers);
                 // console.log(mentorIds);
                 // console.log(lecturerIds);
             } else {
-                console.error('Failed to fetch project details');
+                console.log('Failed to fetch project details');
             }
         } catch (error) {
-            console.error('Error fetching project details:', error);
+            console.log('Error fetching project details:', error);
         }
     };
 
 
     const fetchEvents = async (project: any, startTime: string, endTime: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
             const leaderStatus = await AsyncStorage.getItem('@isLeader');
             setIsLeader(leaderStatus === 'true');
             setEvents({});
-    
-            if (!token) {
-                Alert.alert('No token found, please login.');
+
+            if (token === null) {
+                showSessionExpiredAlert(router);
                 return;
             }
-    
+
+
             if (mentorIds.length === 0 || lecturerIds.length === 0) {
-                console.error('Mentor IDs or Lecturer IDs are missing');
+                console.log('Mentor IDs or Lecturer IDs are missing');
                 return;
             }
-    
+
             const fetchEventsForId = (id: string) => {
                 return fetch('https://smnc.site/api/AppointmentSlots/Search', {
                     method: 'POST',
@@ -136,13 +141,13 @@ const CalendarScreen = () => {
                     }),
                 });
             };
-    
+
             const mentorPromises = mentorIds.map(fetchEventsForId);
             const lecturerPromises = lecturerIds.map(fetchEventsForId);
-    
+
             const responses = await Promise.all([...mentorPromises, ...lecturerPromises]);
             const data = await Promise.all(responses.map(response => response.json()));
-    
+
             const mergeEvents = (dataArray: any[]) => {
                 dataArray.forEach(data => {
                     if (data && data.data) {
@@ -157,26 +162,26 @@ const CalendarScreen = () => {
                                 });
                             return acc;
                         }, {});
-    
+
                         setEvents(prevEvents => ({ ...prevEvents, ...eventsWithNames }));
-                        
+
                     } else {
-                        console.error('Unexpected data format:', data);
+                        console.log('Unexpected data format:', data);
                     }
                 });
             };
-    
+
             mergeEvents(data);
             // console.log('Events after merging:', events);
         } catch (error) {
-            console.error('Error fetching appointments:', error);
+            console.log('Error fetching appointments:', error);
         } finally {
             setLoading(false);
             // console.log('Final events state:', events);
         }
     };
-    
-  
+
+
 
 
     const handleAttendCancel = async (scheduleAppointment: boolean) => {
@@ -189,7 +194,12 @@ const CalendarScreen = () => {
             }
 
             try {
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken();
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
+                }
+
                 const response = await fetch(`https://smnc.site/api/AppointmentSlots/${selectedEvent.id}/ScheduleAppointment?teamId=${myTeamId}&scheduleAppointment=${scheduleAppointment}`, {
                     method: 'PATCH',
                     headers: {
@@ -206,7 +216,7 @@ const CalendarScreen = () => {
                 } else if (data.status) {
                     Alert.alert('Success', 'The appointment has been updated successfully.');
                 } else {
-                    Alert.alert('Error', data.message );
+                    Alert.alert('Error', data.message);
                 }
 
                 setModalVisible(false);
@@ -218,7 +228,7 @@ const CalendarScreen = () => {
                 fetchEvents(project, startTime, endTime);
 
             } catch (error) {
-                console.error('Error updating event:', error);
+                // console.log('Error updating event:', error);
                 Alert.alert('Error', 'There was an error updating the appointment.');
             }
         }
@@ -228,14 +238,19 @@ const CalendarScreen = () => {
             // Retrieve studentId from AsyncStorage
             const storedId = await AsyncStorage.getItem('@id');
             const studentId = storedId ? JSON.parse(storedId) : null;
-            console.log(studentId);
+            // console.log(studentId);
             if (!studentId) {
                 Alert.alert('Error', 'Student ID not found');
                 return;
             }
 
             // Perform the API call
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/AppointmentSlots/${id}/StudentAttendance?studentId=${studentId}`, {
                 method: 'PUT',
                 headers: {
@@ -254,36 +269,41 @@ const CalendarScreen = () => {
                 Alert.alert('Error', 'Join meeting failed');
             }
         } catch (error) {
-            console.error(error);
+            // console.log(error);
             Alert.alert('Error', 'An unexpected error occurred');
         }
     };
     const getAttendanceStatus = async (studentId: string, slotId: string) => {
         try {
-          const token = await AsyncStorage.getItem('@userToken');
-          const response = await fetch(`https://smnc.site/api/StudentAttendance?StudentId=${studentId}&SlotId=${slotId}`, {
-            method: 'GET',
-            headers: {
-              'Accept': 'text/plain',
-              'Authorization': `Bearer ${token}`,
-            },
-          });
-      
-          const data = await response.json();
-          
-          // Logging the response data for debugging
-          console.log('API Response:', data);
-      
-          if (data && data.status) {
-            const attendance = data.data.data[0]; // Adjusted to navigate nested data structure
-            setAttendanceStatus(attendance.status);
-          } else {
-            console.error('Error:', data ? data.message : 'No data received');
-          }
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
+            const response = await fetch(`https://smnc.site/api/StudentAttendance?StudentId=${studentId}&SlotId=${slotId}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'text/plain',
+                    'Authorization': `Bearer ${token}`,
+                },
+            });
+
+            const data = await response.json();
+
+            // Logging the response data for debugging
+            //   console.log('API Response:', data);
+
+            if (data && data.status) {
+                const attendance = data.data.data[0]; // Adjusted to navigate nested data structure
+                setAttendanceStatus(attendance.status);
+            } else {
+                console.log('Error:', data ? data.message : 'No data received');
+            }
         } catch (error) {
-          console.error('Error fetching attendance status:', error);
+            console.log('Error fetching attendance status:', error);
         }
-      };
+    };
     const getEventColor = (status: number) => {
         switch (status) {
             case 0: return '#6699FF'; // Available
@@ -321,29 +341,29 @@ const CalendarScreen = () => {
 
     const handleEventPress = async (event: Event) => {
         setSelectedEvent(event);
-      
+
         try {
-          const storedId = await AsyncStorage.getItem('@id');
-          if (!storedId) {
-            console.error('Stored ID is null');
-            return;
-          }
-      
-          const studentId = JSON.parse(storedId);
-          if (!studentId) {
-            console.error('Student ID is null');
-            return;
-          }
-      
-          if (event && event.id && event.status === AppointmentSlotStatus.Completed) {
-            await getAttendanceStatus(studentId, event.id);
-          } 
-          setModalVisible(true);
+            const storedId = await AsyncStorage.getItem('@id');
+            if (!storedId) {
+                console.log('Stored ID is null');
+                return;
+            }
+
+            const studentId = JSON.parse(storedId);
+            if (!studentId) {
+                console.log('Student ID is null');
+                return;
+            }
+
+            if (event && event.id && event.status === AppointmentSlotStatus.Completed) {
+                await getAttendanceStatus(studentId, event.id);
+            }
+            setModalVisible(true);
         } catch (error) {
-          console.error('Error processing student ID:', error);
+            console.log('Error processing student ID:', error);
         }
-      };
-      
+    };
+
 
 
     const handlePrevWeek = () => {
@@ -380,7 +400,7 @@ const CalendarScreen = () => {
             fetchEvents(project, startTime, endTime);
         }
     }, [mentorIds, lecturerIds, project, currentWeek]);
-    
+
 
     useEffect(() => {
         const updateDate = () => {
@@ -388,30 +408,30 @@ const CalendarScreen = () => {
             setToday(newToday);
             const newCurrentWeek = moment().startOf('week').add(1, 'day');
             setCurrentWeek(newCurrentWeek);
-    
+
             if (mentorIds.length > 0 && lecturerIds.length > 0 && project) {
                 const startTime = newCurrentWeek.startOf('isoWeek').format();
                 const endTime = newCurrentWeek.endOf('isoWeek').format();
                 fetchEvents(project, startTime, endTime);
             }
         };
-    
+
         updateDate();
-    
+
         const now = moment();
         const nextMidnight = moment().startOf('day').add(1, 'day');
         const timeUntilMidnight = nextMidnight.diff(now);
-    
+
         const timeout = setTimeout(() => {
             updateDate();
             setInterval(updateDate, 24 * 60 * 60 * 1000); // Every 24 hours
         }, timeUntilMidnight);
-    
+
         return () => clearTimeout(timeout);
     }, [mentorIds, lecturerIds, project]);
 
     useEffect(() => {
-        console.log("Selected Day: ", selectedDay);
+        // console.log("Selected Day: ", selectedDay);
     }, [selectedDay]);
 
     if (loading) {
@@ -471,7 +491,7 @@ const CalendarScreen = () => {
                                     const timeSlotStart = moment(item.key.split(' - ')[0], 'HH:mm').format('HH:mm');
                                     const timeSlotEnd = moment(item.key.split(' - ')[1], 'HH:mm').format('HH:mm');
                                     // Condition to check if user is leader or show appointment slot if event.creatorId matches mentorId or lecturerId
-                                    const shouldShowEvent = isLeader ;
+                                    const shouldShowEvent = isLeader;
                                     // Check if the event start time and end time match the time slot start time and end time
                                     const isEventInTimeSlot = eventStart === timeSlotStart && eventEnd === timeSlotEnd;
                                     if (isEventInTimeSlot) {
@@ -493,76 +513,76 @@ const CalendarScreen = () => {
             />
             {selectedEvent && (
                 <Modal
-                animationType="slide"
-                transparent={true}
-                visible={modalVisible}
-                onRequestClose={() => {
-                  setModalVisible(!modalVisible);
-                }}
-              >
-                <View style={styles.centeredView}>
-                  <View style={styles.modalView}>
-                    {selectedEvent.status === AppointmentSlotStatus.InProgress && (
-                      <View>
-                        <Text style={styles.modalText}>Meeting Address:</Text>
-                        <TouchableOpacity onPress={() => handlePress(selectedEvent.id)}>
-                          <Text style={{ color: 'blue', textDecorationLine: 'underline' }}>
-                            {selectedEvent.meetingAddress}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                    <Text style={styles.modalText}>
-                      Created by: {selectedEvent.creatorName}
-                    </Text>
-                    <Text style={styles.modalText}>
-                      Status: {AppointmentSlotStatus[selectedEvent.status]}
-                    </Text>
-                    {selectedEvent.status === AppointmentSlotStatus.Completed && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={styles.modalText}>Attendance: </Text>
-                      <Text
-                        style={
-                          attendanceStatus === 0
-                            ? styles.statusAbsent
-                            : attendanceStatus === 1
-                            ? styles.statusPresent
-                            : styles.modalText
-                        }
-                      >
-                        {attendanceStatus === 0 ? 'Absent' : attendanceStatus === 1 ? 'Present' : 'Loading...'}
-                      </Text>
+                    animationType="slide"
+                    transparent={true}
+                    visible={modalVisible}
+                    onRequestClose={() => {
+                        setModalVisible(!modalVisible);
+                    }}
+                >
+                    <View style={styles.centeredView}>
+                        <View style={styles.modalView}>
+                            {selectedEvent.status === AppointmentSlotStatus.InProgress && (
+                                <View>
+                                    <Text style={styles.modalText}>Meeting Address:</Text>
+                                    <TouchableOpacity onPress={() => handlePress(selectedEvent.id)}>
+                                        <Text style={{ color: 'blue', textDecorationLine: 'underline' }}>
+                                            {selectedEvent.meetingAddress}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                            <Text style={styles.modalText}>
+                                Created by: {selectedEvent.creatorName}
+                            </Text>
+                            <Text style={styles.modalText}>
+                                Status: {AppointmentSlotStatus[selectedEvent.status]}
+                            </Text>
+                            {selectedEvent.status === AppointmentSlotStatus.Completed && (
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Text style={styles.modalText}>Attendance: </Text>
+                                    <Text
+                                        style={
+                                            attendanceStatus === 0
+                                                ? styles.statusAbsent
+                                                : attendanceStatus === 1
+                                                    ? styles.statusPresent
+                                                    : styles.modalText
+                                        }
+                                    >
+                                        {attendanceStatus === 0 ? 'Absent' : attendanceStatus === 1 ? 'Present' : 'Loading...'}
+                                    </Text>
+                                </View>
+                            )}
+                            {isLeader && selectedEvent.status === AppointmentSlotStatus.Available && (
+                                <View style={styles.buttonContainer}>
+                                    <TouchableOpacity
+                                        style={[styles.button, styles.saveButton]}
+                                        onPress={() => setConfirmVisible(true)}
+                                    >
+                                        <Text style={styles.textStyle}>Book</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                            {isLeader && selectedEvent.status === AppointmentSlotStatus.Scheduled && (
+                                <View style={styles.buttonContainer}>
+                                    <TouchableOpacity
+                                        style={[styles.button, styles.cancelButton]}
+                                        onPress={() => setCancelVisible(true)}
+                                    >
+                                        <Text style={styles.textStyle}>Cancel</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                            <TouchableOpacity
+                                style={[styles.button, styles.buttonClose]}
+                                onPress={() => setModalVisible(!modalVisible)}
+                            >
+                                <Text style={styles.textStyle}>Close</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
-                    )}
-                    {isLeader && selectedEvent.status === AppointmentSlotStatus.Available && (
-                      <View style={styles.buttonContainer}>
-                        <TouchableOpacity
-                          style={[styles.button, styles.saveButton]}
-                          onPress={() => setConfirmVisible(true)}
-                        >
-                          <Text style={styles.textStyle}>Book</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                     {isLeader && selectedEvent.status === AppointmentSlotStatus.Scheduled && (
-                      <View style={styles.buttonContainer}>
-                        <TouchableOpacity
-                          style={[styles.button, styles.cancelButton]}
-                          onPress={() => setCancelVisible(true)}
-                        >
-                          <Text style={styles.textStyle}>Cancel</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                    <TouchableOpacity
-                      style={[styles.button, styles.buttonClose]}
-                      onPress={() => setModalVisible(!modalVisible)}
-                    >
-                      <Text style={styles.textStyle}>Close</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </Modal>              
+                </Modal>
             )}
 
             {confirmVisible && (
@@ -806,11 +826,11 @@ const styles = StyleSheet.create({
     statusAbsent: {
         marginBottom: 15,
         color: 'red',
-      },
-      statusPresent: {
+    },
+    statusPresent: {
         marginBottom: 15,
         color: 'green',
-      },    
+    },
 });
 
 export default CalendarScreen;

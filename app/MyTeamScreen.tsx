@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useIsFocused } from '@react-navigation/native';
+import { checkToken } from '../components/checkToken';
+import { showSessionExpiredAlert } from '../components/alertUtils';
 interface Member {
     studentName: string;
     studentCode: string;
@@ -31,7 +33,7 @@ const fetchTeamDetails = async (courseId: string, semesterId: string, userToken:
         });
         return response.json();
     } catch (error) {
-        console.error('Error fetching team details:', error);
+        // console.log('Error fetching team details:', error);
         throw error;
     }
 };
@@ -56,15 +58,15 @@ const deleteMember = async (member: Member, userToken: string) => {
         });
 
         if (!response.ok) {
-            console.log(member.memberRole);
-            console.log(member.note);
-            console.log(member.id);
+            // console.log(member.memberRole);
+            // console.log(member.note);
+            // console.log(member.id);
             // throw new Error('Failed to delete member');
         }
 
         Alert.alert('Success', 'Delete member successfully!');
     } catch (error) {
-        console.error('Error deleting member:', error);
+        console.log('Error deleting member:', error);
         Alert.alert('Error', 'Error deleting member!');
         throw error;
     }
@@ -96,7 +98,7 @@ const assignLeader = async (member: Member, userToken: string) => {
         Alert.alert('Success', 'Assign leader successfully!');
     } catch (error) {
         Alert.alert('Error', 'Error assign leader!');
-        console.error('Error assigning leader:', error);
+        // console.log('Error assigning leader:', error);
         throw error;
     }
 };
@@ -126,7 +128,7 @@ const unAssignLeader = async (member: Member, userToken: string) => {
         Alert.alert('Success', 'Unassign leader successfully!');
     } catch (error) {
         Alert.alert('Error', 'Error unassign leader!');
-        console.error('Error unassigning leader:', error);
+        // console.log('Error unassigning leader:', error);
         throw error;
     }
 };
@@ -151,7 +153,7 @@ const updateMemberRole = async (member: Member, userToken: string) => {
         });
 
         const responseText = await response.text();
-        console.log('Server Response:', responseText);
+        // console.log('Server Response:', responseText);
 
         if (!response.ok) {
             throw new Error('Failed to update member role');
@@ -163,7 +165,7 @@ const updateMemberRole = async (member: Member, userToken: string) => {
             return {}; // Handle empty response
         }
     } catch (error) {
-        console.error('Error updating member role:', error);
+        console.log('Error updating member role:', error);
         throw error;
     }
 };
@@ -181,7 +183,7 @@ const MyTeamScreen = () => {
     const [selectedMember, setSelectedMember] = useState<Member | null>(null);
     const [currentstudentCode, setStudentCode] = useState<string | null>(null);
     const [editRoleMode, setEditRoleMode] = useState<boolean>(false);
-    const {courseDetails, studentCode } = useLocalSearchParams();
+    const { courseDetails, studentCode } = useLocalSearchParams();
     const [newRole, setNewRole] = useState<string>('');
     const [joinRequestsCount, setJoinRequestsCount] = useState<number>(0);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -196,14 +198,18 @@ const MyTeamScreen = () => {
             members.sort((a: Member, b: Member) => b.isLeader ? 1 : -1);
             setTeamDetails(members);
         } catch (error) {
-            console.error('Error refreshing team details:', error);
+            console.log('Error refreshing team details:', error);
         }
     };
 
     useEffect(() => {
         const loadTeamDetails = async () => {
             try {
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken();
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
+                }
                 if (token && courseDetails && studentCode) {
                     const parsedCourseDetails = JSON.parse(courseDetails as string);
                     const teamDetails = await fetchTeamDetails(parsedCourseDetails.courseId, parsedCourseDetails.semesterId, token);
@@ -238,7 +244,7 @@ const MyTeamScreen = () => {
                     console.log('Required data missing');
                 }
             } catch (error) {
-                console.error('Error loading team details:', error);
+                console.log('Error loading team details:', error);
             } finally {
                 setLoading(false);
             }
@@ -250,14 +256,18 @@ const MyTeamScreen = () => {
         setShowDeleteConfirm(false);
         if (selectedMember) {
             try {
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken();
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
+                }
                 if (token) {
                     await deleteMember(selectedMember, token);
                     // Refresh the team details after deleting the member
                     await refreshTeamDetails(token);
                 }
             } catch (error) {
-                console.error('Error deleting member:', error);
+                console.log('Error deleting member:', error);
             }
         }
         setModalVisible(false);
@@ -267,14 +277,18 @@ const MyTeamScreen = () => {
         setShowAssignConfirm(false);
         if (selectedMember) {
             try {
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken();
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
+                }
                 if (token) {
                     await assignLeader(selectedMember, token);
                     // Refresh the team details after assigning the leader
                     await refreshTeamDetails(token);
                 }
             } catch (error) {
-                console.error('Error assigning leader:', error);
+                console.log('Error assigning leader:', error);
             }
         }
         setModalVisible(false);
@@ -283,14 +297,18 @@ const MyTeamScreen = () => {
         setShowUnassignConfirm(false);
         if (selectedMember) {
             try {
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken();
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
+                }
                 if (token) {
                     await unAssignLeader(selectedMember, token);
                     // Refresh the team details after assigning the leader
                     await refreshTeamDetails(token);
                 }
             } catch (error) {
-                console.error('Error assigning leader:', error);
+                console.log('Error assigning leader:', error);
             }
         }
         setModalVisible(false);
@@ -303,47 +321,50 @@ const MyTeamScreen = () => {
 
     const handleSaveRole = async () => {
         if (selectedMember) {
-          try {
-            const token = await AsyncStorage.getItem('@userToken');
-      
-            // List of valid roles
-            const validRoles = ['FE', 'BE', 'Mobile', 'UI/UX', 'Marketing'];
-      
-            // Validate that the newRole is not empty
-            if (!newRole.trim()) {
-              Alert.alert('Validation Error', 'Member role cannot be empty');
-              return;
+            try {
+                const token = await checkToken();
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
+                }
+                // List of valid roles
+                const validRoles = ['FE', 'BE', 'Mobile', 'UI/UX', 'Marketing'];
+
+                // Validate that the newRole is not empty
+                if (!newRole.trim()) {
+                    Alert.alert('Validation Error', 'Member role cannot be empty');
+                    return;
+                }
+
+                // Split the newRole input into roles separated by commas
+                const roleWords = newRole.trim().split(/\s*,\s*/);
+                for (const word of roleWords) {
+                    // Convert both the input role and valid roles to lowercase for comparison
+                    if (!validRoles.map(role => role.toLowerCase()).includes(word.toLowerCase())) {
+                        Alert.alert('Validation Error', 'Invalid member role. Please enter one of the following roles: FE, BE, Mobile, UI/UX, Marketing and must use , between 2 roles');
+                        return;
+                    }
+                }
+
+                if (token) {
+                    const updatedMember = { ...selectedMember, memberRole: newRole };
+                    await updateMemberRole(updatedMember, token);
+                    // Refresh the team details after updating the role
+                    await refreshTeamDetails(token);
+                    Alert.alert('Success', 'Member role updated successfully');
+                }
+            } catch (error) {
+                // console.log('Error updating member role:', error);
+                Alert.alert('Error', 'Failed to update member role');
             }
-      
-            // Split the newRole input into roles separated by commas
-            const roleWords = newRole.trim().split(/\s*,\s*/);
-            for (const word of roleWords) {
-              // Convert both the input role and valid roles to lowercase for comparison
-              if (!validRoles.map(role => role.toLowerCase()).includes(word.toLowerCase())) {
-                Alert.alert('Validation Error', 'Invalid member role. Please enter one of the following roles: FE, BE, Mobile, UI/UX, Marketing and must use , between 2 roles');
-                return;
-              }
-            }
-      
-            if (token) {
-              const updatedMember = { ...selectedMember, memberRole: newRole };
-              await updateMemberRole(updatedMember, token);
-              // Refresh the team details after updating the role
-              await refreshTeamDetails(token);
-              Alert.alert('Success', 'Member role updated successfully');
-            }
-          } catch (error) {
-            console.error('Error updating member role:', error);
-            Alert.alert('Error', 'Failed to update member role');
-          }
         }
         setEditRoleMode(false);
         setModalVisible(false);
-      };
-      
-      
-    
-    
+    };
+
+
+
+
     const fetchJoinRequests = async (teamId: string, token: string) => {
         try {
             const response = await fetch(`https://smnc.site/api/TeamRequest/search?PageSize=10&TeamId=${teamId}`, {
@@ -362,14 +383,18 @@ const MyTeamScreen = () => {
                 throw new Error('Failed to fetch join requests');
             }
         } catch (error) {
-            console.error('Error fetching join requests:', teamId);
+            console.log('Error fetching join requests:', teamId);
             throw error;
         }
     };
 
     const handleViewJoinRequests = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
             if (token) {
                 const parsedCourseDetails = JSON.parse(courseDetails as string);
                 const teamDetails = await fetchTeamDetails(parsedCourseDetails.courseId, parsedCourseDetails.semesterId, token);
@@ -386,7 +411,7 @@ const MyTeamScreen = () => {
                 }
             }
         } catch (error) {
-            console.error('Error viewing join requests:', error);
+            // console.log('Error viewing join requests:', error);
             Alert.alert('Error', 'Failed to retrieve join requests');
         }
     };
@@ -713,7 +738,7 @@ const styles = StyleSheet.create({
         fontSize: 14,
         color: '#fff',
         fontWeight: 'bold',
-    },modalButtonContainer: {
+    }, modalButtonContainer: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         marginTop: 20,

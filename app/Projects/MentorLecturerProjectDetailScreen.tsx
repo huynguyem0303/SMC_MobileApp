@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Image, Modal } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 interface ProjectDetail {
     id: string;
     projectCode: string;
@@ -78,10 +79,12 @@ const MentorLecturerProjectDetailScreen = () => {
 
     const fetchProjectDetail = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
-            if (!token) {
-                throw new Error('User token not found');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
             }
+
             const response = await fetch(`https://smnc.site/api/Projects/${projectId}?orderMilestoneByStartDate=true`, {
                 method: 'GET',
                 headers: {

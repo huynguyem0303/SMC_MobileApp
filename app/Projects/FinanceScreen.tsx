@@ -4,7 +4,8 @@ import RNPickerSelect from 'react-native-picker-select';
 import DocumentPicker, { DocumentPickerResponse } from 'react-native-document-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { checkToken } from '../../components/checkToken';
+import { showSessionExpiredAlert } from '../../components/alertUtils';
 type Transaction = {
     id: string;
     description: string;
@@ -26,7 +27,7 @@ const FinanceScreen = () => {
     const [description, setDescription] = useState('');
     const [type, setType] = useState('cashIn');
     const [amount, setAmount] = useState('');
-    const [imageFile, setImageFile] = useState<{ uri: string; type: string; name: string;size:number } | null>(null);
+    const [imageFile, setImageFile] = useState<{ uri: string; type: string; name: string; size: number } | null>(null);
     const pageSize = 10;
     const { projectId } = useLocalSearchParams();
     const id = String(projectId);
@@ -38,13 +39,15 @@ const FinanceScreen = () => {
     const fetchTransactions = async () => {
         try {
             setTotal(0);
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+
             const storedIsLeader = await AsyncStorage.getItem('@isLeader');
             setIsLeader(storedIsLeader === 'true');
-            if (!token) {
-                Alert.alert('Error', 'User token is required');
+            if (token === null) {
+                showSessionExpiredAlert(router);
                 return;
             }
+
             if (!id) {
                 Alert.alert('Error', 'Project ID is required');
                 return;
@@ -59,19 +62,21 @@ const FinanceScreen = () => {
             const json = await response.json();
 
             if (json.status) {
-                const filteredTransactions = json.data.transactions.data.filter((transaction: Transaction) => !transaction.isDeleted);
-                const total = filteredTransactions
-                .filter((transaction: Transaction) => transaction.amount >= 0)
-                .reduce((acc: number, transaction: Transaction) => acc + transaction.amount, 0);
+                const allTransactions = json.data.transactions.data;
+
+                const total = allTransactions
+                .filter((transaction: Transaction) => transaction.amount >= 0 && !transaction.isDeleted)
+                .reduce((acc: number, transaction: Transaction) => acc + transaction.amount, 0);            
                 setTotal(total);
                 setRemaining(json.data.total);
                 setCashOut(json.data.cashOut);
-                setTransactions(filteredTransactions);
+                setTransactions(allTransactions);
+                // console.log(transactions);
             } else {
                 Alert.alert('Error', json.message);
             }
         } catch (error) {
-            console.error('Error fetching transactions:', error);
+            // console.log('Error fetching transactions:', error);
             Alert.alert('Error', 'Failed to fetch transactions');
         }
     };
@@ -86,7 +91,12 @@ const FinanceScreen = () => {
 
     const handleDelete = async (transactionId: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/Financial/transaction/${transactionId}`, {
                 method: 'DELETE',
                 headers: {
@@ -102,7 +112,7 @@ const FinanceScreen = () => {
                 Alert.alert('Error', 'Failed to delete transaction');
             }
         } catch (error) {
-            console.error('Error deleting transaction:', error);
+            // console.log('Error deleting transaction:', error);
             Alert.alert('Error', 'Failed to delete transaction');
         }
     };
@@ -151,16 +161,21 @@ const FinanceScreen = () => {
             Alert.alert('Error', 'Cash Out amount must not be greater than the total');
             return;
         }
-    
+
         // Change image/jpeg to image/jpg
         const fileType = imageFile.type === 'image/jpeg' ? 'image/jpg' : imageFile.type;
-    
+
         // Split the file name to get the base name without extension
         const baseFileName = imageFile.name.split('.').slice(0, -1).join('.');
-    
+
         setLoading(true); // Start loading
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const formData = new FormData();
             formData.append('ProjectId', id);
             formData.append('Description', description);
@@ -171,7 +186,7 @@ const FinanceScreen = () => {
                 type: fileType,
                 name: imageFile.name, // Use the base file name without extension
             } as any);
-    
+
             const response = await fetch('https://smnc.site/api/Financial/addTransaction', {
                 method: 'POST',
                 headers: {
@@ -181,7 +196,7 @@ const FinanceScreen = () => {
                 },
                 body: formData,
             });
-    
+
             if (response.status === 200) {
                 Alert.alert('Success', `Transaction created successfully`);
                 setModalVisible(false);
@@ -195,34 +210,34 @@ const FinanceScreen = () => {
                 Alert.alert('Error', 'Failed to create transaction');
             }
         } catch (error: any) {
-            console.error('Error creating transaction:', error);
+            // console.log('Error creating transaction:', error);
             Alert.alert('Error', error.message);
         } finally {
             setLoading(false); // Stop loading
         }
     };
-        
+
     const pickDocument = async () => {
         try {
             const result: DocumentPickerResponse[] = await DocumentPicker.pick({
                 type: [DocumentPicker.types.images],
             });
-    
+
             if (result.length > 0) {
                 const file = result[0];
                 const fileName = file.name || 'Untitled';
                 const fileType = file.type?.split('/').pop() || '';
                 const fileSize = file.size || 0; // Get the file size
-    
+
                 // Check if the file size is greater than 3MB (3 * 1024 * 1024 bytes)
                 if (fileSize > 2 * 1024 * 1024) {
                     Alert.alert('Error', 'File size must be less than 2MB');
                     return;
                 }
-                
+
                 // Check if the file name already has an extension
                 const fullFileName = fileName.match(/\.[0-9a-z]+$/i) ? fileName : `${fileName}.${fileType}`;
-    
+
                 setImageFile({
                     uri: file.uri || 'Untitled',
                     type: file.type || '',
@@ -240,9 +255,9 @@ const FinanceScreen = () => {
             }
         }
     };
-    
-    
-    
+
+
+
     const renderTransactions = () => {
         const startIndex = (currentPage - 1) * pageSize;
         const endIndex = startIndex + pageSize;
@@ -260,6 +275,16 @@ const FinanceScreen = () => {
                             year: 'numeric'
                         })}
                     </Text>
+                    <View>
+                        <Text style={styles.transactionDetail}>
+                            Status:
+                            <Text style={{ color: transaction.isDeleted ? 'red' : 'green' }}>
+                                {transaction.isDeleted ? 'Deleted' : 'Available'}
+                            </Text>
+                        </Text>
+                    </View>
+
+
                     {transaction.imageUrl && (
                         <TouchableOpacity onPress={() => {
                             if (transaction.imageUrl) {
@@ -267,7 +292,7 @@ const FinanceScreen = () => {
                                 setImageModalVisible(true);
                             } else {
                                 Alert.alert('Error', 'No Image available');
-                                console.log(transaction.imageUrl);
+                                // console.log(transaction.imageUrl);
                             }
                         }}>
                             <Text style={styles.imageLink}>View Image</Text>
@@ -301,15 +326,15 @@ const FinanceScreen = () => {
                 )}
                 <View style={styles.inlineContainer}>
                     <Text style={styles.title}>Total: {formattedTotal} VND</Text>
-                  
+
                 </View>
                 <View style={styles.inlineContainer1}>
-                <Text style={styles.title}>Cash Out: {formattedCashOut} VND</Text>
-                   </View>
+                    <Text style={styles.title}>Cash Out: {formattedCashOut} VND</Text>
+                </View>
                 <View style={styles.inlineContainer1}>
                     <Text style={styles.title}>Remaining: {formattedRemaining} VND</Text>
                 </View>
-                
+
                 {renderTransactions()}
             </ScrollView>
             <View style={styles.pagination}>
@@ -359,7 +384,7 @@ const FinanceScreen = () => {
                                 <View style={styles.uploadContainer}>
                                     <Text style={styles.fileText}>Choose File</Text>
                                     <TouchableOpacity style={styles.uploadButtonPopup} onPress={pickDocument}>
-                                    <Text style={styles.uploadButtonText}>{imageFile ? `${imageFile.name}` : 'No file chosen'}</Text>
+                                        <Text style={styles.uploadButtonText}>{imageFile ? `${imageFile.name}` : 'No file chosen'}</Text>
                                     </TouchableOpacity>
                                 </View>
                                 <View style={styles.buttonContainer}>
@@ -400,7 +425,7 @@ const FinanceScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1,backgroundColor: '#ffffff' },
+    container: { flex: 1, backgroundColor: '#ffffff' },
     header: {
         backgroundColor: '#003366',
         padding: 20,
@@ -436,13 +461,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 40,
-        marginBottom:10
+        marginBottom: 10
     },
     inlineContainer1: {
         flexDirection: 'row',
         alignItems: 'center',
         marginTop: 10,
-        marginBottom:15
+        marginBottom: 15
     },
     title: { fontSize: 18, fontWeight: 'bold', marginLeft: 30 },
     remaintitle: { fontSize: 18, fontWeight: 'bold', marginLeft: 100, marginTop: 15, marginBottom: 15 },

@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 interface Milestone {
     id: string;
     name: string;
@@ -62,14 +63,16 @@ const MilestoneScreen = () => {
 
     const fetchMilestones = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
             const storedIsLeader = await AsyncStorage.getItem('@isLeader');
             setIsStartDateTimeChosen(false);
             setIsEndDateTimeChosen(false);
             setIsLeader(storedIsLeader === 'true');
-            if (!token) {
-                throw new Error('No token found');
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
             }
+
 
             const projectResponse = await fetch(`https://smnc.site/api/Projects/CurrentUserProject?courseId=${courseId}&semesterId=${semesterId}`, {
                 headers: {
@@ -106,7 +109,7 @@ const MilestoneScreen = () => {
                 setError(projectData.message || 'Unexpected response structure');
             }
         } catch (error) {
-            console.error('Error fetching milestones:', error);
+            // console.log('Error fetching milestones:', error);
             setError('Failed to fetch milestones.');
         } finally {
             setLoading(false);
@@ -115,10 +118,12 @@ const MilestoneScreen = () => {
 
     const fetchMilestoneDetails = async (milestoneId: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
-            if (!token) {
-                throw new Error('No token found');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
             }
+
 
             const response = await fetch(`https://smnc.site/api/Milestones/${milestoneId}`, {
                 headers: {
@@ -136,7 +141,7 @@ const MilestoneScreen = () => {
                 setError(data.message || 'Failed to fetch milestone details.');
             }
         } catch (error) {
-            console.error('Error fetching milestone details:', error);
+            // console.log('Error fetching milestone details:', error);
             setError('Failed to fetch milestone details.');
         }
     };
@@ -166,7 +171,12 @@ const MilestoneScreen = () => {
         }
 
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const projectId = milestones[0]?.projectId;
             const response = await fetch('https://smnc.site/api/Milestones', {
                 method: 'POST',
@@ -222,7 +232,12 @@ const MilestoneScreen = () => {
         }
 
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token ===null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/Milestones/${milestoneId}`, {
                 method: 'PUT',
                 headers: {
@@ -268,7 +283,11 @@ const MilestoneScreen = () => {
                     text: 'Confirm',
                     onPress: async () => {
                         try {
-                            const token = await AsyncStorage.getItem('@userToken');
+                            const token = await checkToken();
+                            if (token === null) {
+                                showSessionExpiredAlert(router);
+                                return;
+                            }            
                             const response = await fetch(`https://smnc.site/api/Milestones/${milestoneId}`, {
                                 method: 'DELETE',
                                 headers: {

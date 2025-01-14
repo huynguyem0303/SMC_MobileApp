@@ -9,7 +9,8 @@ import getToken from '../../components/Jwt/getToken'; // Adjust the path if nece
 import DocumentPicker, { DocumentPickerResponse } from 'react-native-document-picker';
 import { format } from 'date-fns';
 import RNFetchBlob from 'rn-fetch-blob';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 enum TaskStatusEnum {
     NotStarted = 0,
     InProgress,
@@ -129,13 +130,14 @@ const TaskDetailScreen = () => {
 
     const fetchTaskDetails = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
-            setIsStartDateTimeChosen(false);
-            setIsEndDateTimeChosen(false);
-            if (!token) {
-                Alert.alert('No token found, please login.');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
                 return;
             }
+            setIsStartDateTimeChosen(false);
+            setIsEndDateTimeChosen(false);
+        
 
             const response = await fetch(`https://smnc.site/api/ProjectTasks/${taskId}`, {
                 method: 'GET',
@@ -158,10 +160,10 @@ const TaskDetailScreen = () => {
                     setIsLeader(storedIsLeader === 'true');
                 }
             } else {
-                console.error('Failed to fetch task details');
+                console.log('Failed to fetch task details');
             }
         } catch (error) {
-            console.error('Error fetching task details:', error);
+            console.log('Error fetching task details:', error);
         } finally {
             setLoading(false);
         }
@@ -197,7 +199,7 @@ const TaskDetailScreen = () => {
             if (DocumentPicker.isCancel(err)) {
                 // console.log('User cancelled the document picker');
             } else {
-                console.error('Error: ', err);
+                console.log('Error: ', err);
             }
         }
     };
@@ -221,7 +223,11 @@ const TaskDetailScreen = () => {
         setUploadLoading(true); // Set loading state to true
 
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
             const formData = new FormData();
             formData.append('DocumentType', '2');
             formData.append('TaskId', task.id);
@@ -269,12 +275,11 @@ const TaskDetailScreen = () => {
     };
     const fetchDocuments = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
-            if (!token) {
-                Alert.alert('No token found, please login.');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
                 return;
             }
-
             const response = await fetch(`https://smnc.site/api/Documents?TaskId=${taskId}`, {
                 method: 'GET',
                 headers: {
@@ -288,10 +293,10 @@ const TaskDetailScreen = () => {
                 const filteredDocuments = data.data.data.filter((doc: Document) => !doc.isDeleted);
                 setDocuments(filteredDocuments);
             } else {
-                console.error('Failed to fetch documents');
+                console.log('Failed to fetch documents');
             }
         } catch (error) {
-            console.error('Error fetching documents:', error);
+            console.log('Error fetching documents:', error);
         }
     };
     const downloadFile = async (filePath: any, fileName: any) => {
@@ -303,7 +308,7 @@ const TaskDetailScreen = () => {
                 ]);
                 if (granted['android.permission.WRITE_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED &&
                     granted['android.permission.READ_EXTERNAL_STORAGE'] === PermissionsAndroid.RESULTS.GRANTED) {
-                    console.log('You can use the storage');
+                    // console.log('You can use the storage');
                     return true;
                 } else {
                     console.log('Storage permission denied');
@@ -346,11 +351,11 @@ const TaskDetailScreen = () => {
                         })
                             .fetch('GET', filePath)
                             .then((res) => {
-                                console.log('The file saved to ', res.path());
+                                // console.log('The file saved to ', res.path());
                                 Alert.alert('Download Complete', `File ${fileName} downloaded successfully`);
                             })
                             .catch((error) => {
-                                console.error('Download failed', error);
+                                // console.log('Download failed', error);
                                 Alert.alert('Download Failed', 'There was an error downloading the file.');
                             });
                     },
@@ -375,7 +380,11 @@ const TaskDetailScreen = () => {
                     text: 'OK',
                     onPress: async () => {
                         try {
-                            const token = await AsyncStorage.getItem('@userToken');
+                            const token = await checkToken();
+                            if (token === null) {
+                                showSessionExpiredAlert(router);
+                                return;
+                            }            
                             const response = await fetch(`https://smnc.site/api/Documents/${documentId}`, {
                                 method: 'DELETE',
                                 headers: {
@@ -449,12 +458,12 @@ const TaskDetailScreen = () => {
                                 return;
                             }
                             try {
-                                const token = await AsyncStorage.getItem('@userToken');
-                                if (!token) {
-                                    Alert.alert('No token found, please login.');
+                                const token = await checkToken();
+                                if (token === null) {
+                                    showSessionExpiredAlert(router);
                                     return;
                                 }
-
+                
                                 const response = await fetch(`https://smnc.site/api/ProjectTasks/${task.id}`, {
                                     method: 'PUT',
                                     headers: {
@@ -480,12 +489,12 @@ const TaskDetailScreen = () => {
                                     fetchTaskDetails(); // Reload the screen by fetching task details
                                 } else {
                                     const errorData = await response.json();
-                                    console.log(errorData.message)
+                                    // console.log(errorData.message)
                                     Alert.alert('Error', errorData.message || 'Failed to update task.');
                                     fetchTaskDetails();
                                 }
                             } catch (error) {
-                                console.error('Error updating task:', error);
+                                // console.log('Error updating task:', error);
                                 Alert.alert('Error', 'An error occurred while updating the task.');
                             }
                         }
@@ -530,11 +539,12 @@ const TaskDetailScreen = () => {
                             }
 
                             try {
-                                const token = await AsyncStorage.getItem('@userToken');
-                                if (!token) {
-                                    Alert.alert('No token found, please login.');
+                                const token = await checkToken();
+                                if (token === null) {
+                                    showSessionExpiredAlert(router);
                                     return;
                                 }
+                
 
                                 const response = await fetch(`https://smnc.site/api/ProjectTasks/${task.id}/UnAssignTeamMember?teamMemberId=${JSON.parse(memberId)}`, {
                                     method: 'DELETE',
@@ -553,7 +563,7 @@ const TaskDetailScreen = () => {
                                     Alert.alert('Error', errorData.message || 'Failed to unassign team member.');
                                 }
                             } catch (error) {
-                                console.error('Error unassigning team member:', error);
+                                // console.log('Error unassigning team member:', error);
                                 Alert.alert('Error', 'An error occurred while unassigning the team member.');
                             }
                         }

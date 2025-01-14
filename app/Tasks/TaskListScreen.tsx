@@ -7,7 +7,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
 import { useIsFocused } from '@react-navigation/native';
 import moment from 'moment';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 interface Task {
     id: string;
     name: string;
@@ -71,7 +72,11 @@ const TaskListScreen = () => {
 
     const fetchTasks = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
             const storedIsLeader = await AsyncStorage.getItem('@isLeader');
             setIsStartDateTimeChosen(false);
             setIsEndDateTimeChosen(false);
@@ -115,7 +120,7 @@ const TaskListScreen = () => {
                 }
             }
         } catch (error) {
-            console.error('Error fetching tasks:', error);
+            // console.log('Error fetching tasks:', error);
             setError('Failed to fetch tasks.');
         } finally {
             setLoading(false);
@@ -152,7 +157,12 @@ const TaskListScreen = () => {
         }
 
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch('https://smnc.site/api/ProjectTasks', {
                 method: 'POST',
                 headers: {
@@ -199,9 +209,14 @@ const TaskListScreen = () => {
 
     const handleAssignTask = async (taskId: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const memberId = await AsyncStorage.getItem('@memberid');
-            console.log(memberId);
+            // console.log(memberId);
             if (!token || !memberId) {
                 throw new Error('Token or member ID not found');
             }
@@ -230,7 +245,7 @@ const TaskListScreen = () => {
             }
         } catch (error) {
             Alert.alert('Error', 'An error occurred while assigning the task.');
-            console.log(error);
+            // console.log(error);
         }
     };
 
@@ -255,7 +270,7 @@ const TaskListScreen = () => {
             [
                 {
                     text: 'Cancel',
-                    onPress: () => console.log('Cancel Pressed'),
+                    // onPress: () => console.log('Cancel Pressed'),
                     style: 'cancel'
                 },
                 {
@@ -269,7 +284,12 @@ const TaskListScreen = () => {
 
     const deleteTask = async (taskId: string) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/ProjectTasks/${taskId}`, {
                 method: 'DELETE',
                 headers: {

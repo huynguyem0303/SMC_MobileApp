@@ -18,7 +18,7 @@ export const fetchAccountData = async (accID) => {
 
     if (response.ok && result.data) {
       await AsyncStorage.setItem('@accountData', JSON.stringify(result.data));
-      console.log('Account data stored successfully');
+      // console.log('Account data stored successfully');
     } else {
       console.log('Failed to fetch account data:', result.message);
       throw new Error(result.message || 'Failed to fetch account data');

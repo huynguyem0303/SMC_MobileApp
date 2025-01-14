@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import getToken from '../../components/Jwt/getToken';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils';
 type MentorLecturer = {
   name: string;
   roleType: 'Mentor' | 'Lecturer';
@@ -41,7 +42,11 @@ const ProjectDetailScreen = () => {
 
   const fetchProjectDetail = async () => {
     try {
-      const token = await AsyncStorage.getItem('@userToken');
+      const token = await checkToken();
+      if (token === null) {
+        showSessionExpiredAlert(router);
+        return;
+    }
       const response = await fetch(`https://smnc.site/api/Projects/${projectId}`, {
         method: 'GET',
         headers: {
@@ -57,7 +62,7 @@ const ProjectDetailScreen = () => {
       }
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching project detail:', error);
+      // console.log('Error fetching project detail:', error);
       setError('Failed to fetch project details.');
       setLoading(false);
     }
@@ -65,21 +70,27 @@ const ProjectDetailScreen = () => {
 
   const retrieveToken = async () => {
     try {
-      const token = await AsyncStorage.getItem('@userToken');// Use getToken to retrieve and decode the token
-      if (token) {
-        setUserToken(token);
+      const token = await checkToken();
+      if (token === null) {
+        showSessionExpiredAlert(router);
       } else {
-        Alert.alert('Error', 'No Token found.');
+        setUserToken(token);
       }
     } catch (error) {
-      console.log('Error retrieving token: ', error);
+      // console.log('Error retrieving token: ', error);
+      Alert.alert('Error', 'An error occurred while retrieving the token.');
     }
   };
 
   useEffect(() => {
-    fetchProjectDetail();
-    retrieveToken();
-  }, []);
+    const initialize = async () => {
+      await retrieveToken();
+      fetchProjectDetail(); // Fetch project details if token retrieval is successful
+    };
+
+    initialize();
+  }, [router]);
+
 
   const handleJoinTeam = async () => {
     if (!projectDetail || !userToken) return;
@@ -138,7 +149,7 @@ const ProjectDetailScreen = () => {
         Alert.alert('Error', errorMessage);
       }
     } catch (error) {
-      console.error('Error sending request to join team:', error);
+      // console.log('Error sending request to join team:', error);
       Alert.alert('Error', 'Failed to send request.');
     }
   };

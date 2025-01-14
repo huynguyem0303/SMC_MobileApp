@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, Alert, StyleSheet, ScrollView, Image, TouchableOpacity, Switch, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 // Define TypeScript interfaces for the project details
 interface SemesterAndCourse {
     semesterId: string;
@@ -69,12 +70,14 @@ const MyProjectScreen = () => {
     useEffect(() => {
         const fetchProjectDetail = async () => {
             try {
-                const token = await AsyncStorage.getItem('@userToken');
+                const token = await checkToken();
                 const storedIsLeader = await AsyncStorage.getItem('@isLeader');
                 setIsLeader(storedIsLeader === 'true');
-                if (!token) {
-                    throw new Error('No token found');
+                if (token === null) {
+                    showSessionExpiredAlert(router);
+                    return;
                 }
+
 
                 const response = await fetch(`https://smnc.site/api/Projects/CurrentUserProject?courseId=${courseId}&semesterId=${semesterId}`, {
                     headers: {
@@ -90,11 +93,11 @@ const MyProjectScreen = () => {
                     setMemberWantedStatus(data.data.data[0].memberWantedStatus);
                     setMemberWantedInput(data.data.data[0].memberWanted);
                 } else {
-                    console.log(data.data.length);
+                    // console.log(data.data.length);
                     setError(data.message || 'Unexpected response structure');
                 }
             } catch (error) {
-                console.error('Error fetching project detail:', error);
+                // console.log('Error fetching project detail:', error);
                 setError('Failed to fetch project details.');
             } finally {
                 setLoading(false);
@@ -111,11 +114,11 @@ const MyProjectScreen = () => {
 
     const updateMemberWantedStatus = async (status: boolean) => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
-            if (!token) {
-                throw new Error('No token found');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
             }
-
             const formData = new FormData();
             formData.append('isDeleted', 'false');
             formData.append('memberWanted', '');
@@ -144,11 +147,11 @@ const MyProjectScreen = () => {
                 }
             } else {
                 const errorData = await response.json();
-                console.error('Error updating member wanted status:', errorData);
+                // console.log('Error updating member wanted status:', errorData);
                 Alert.alert('Update Failed', 'Failed to update member wanted status.');
             }
         } catch (error) {
-            console.error('Error updating member wanted status:', error);
+            // console.log('Error updating member wanted status:', error);
             Alert.alert('Update Failed', 'Failed to update member wanted status.');
         }
     };
@@ -170,10 +173,12 @@ const MyProjectScreen = () => {
             }
         }
         try {
-            const token = await AsyncStorage.getItem('@userToken');
-            if (!token) {
-                throw new Error('No token found');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
             }
+
 
             const formData = new FormData();
             formData.append('isDeleted', 'false');
@@ -198,16 +203,16 @@ const MyProjectScreen = () => {
                     // console.log('API response:', data);
                     Alert.alert('Success', 'Member wanted updated');
                 } catch (error) {
-                    console.log('No JSON response body');
+                    // console.log('No JSON response body');
                     Alert.alert('Success', 'Member wanted updated');
                 }
             } else {
                 const errorData = await response.json();
-                console.error('Error updating member wanted status:', errorData);
+                // console.log('Error updating member wanted status:', errorData);
                 Alert.alert('Update Failed', 'Failed to update member wanted status.');
             }
         } catch (error) {
-            console.error('Error updating member wanted status:', error);
+            // console.log('Error updating member wanted status:', error);
             Alert.alert('Update Failed', 'Failed to update member wanted status.');
         }
     };

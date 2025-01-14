@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, TextInput, Button, Alert, Image, Platform } from "react-native";
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView} from "react-native";
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import RNPickerSelect from 'react-native-picker-select';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { format } from 'date-fns';
 import { useIsFocused } from '@react-navigation/native';
 import moment from 'moment';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 interface Task {
     id: string;
     name: string;
@@ -30,47 +27,26 @@ enum TaskStatusEnum {
     NeedRevision,
 }
 
-enum ReminderEnum {
-    None = 0,
-    OneDayBefore = 1,
-    TwoDaysBefore = 2,
-    ThreeDaysBefore = 3,
-    OneWeekBefore = 7,
-    TwoWeeksBefore = 14,
-    OneMonthBefore = 30
-}
 
 const MentorLectuerProjectTaskListScreen = () => {
     const [tasks, setTasks] = useState<{ weekNumber: number, tasks: Task[] }[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(true);
-    const [modalVisible, setModalVisible] = useState(false); // State for modal visibility
-    const [assignModalVisible, setAssignModalVisible] = useState<{ [key: string]: boolean }>({});
-    const [taskName, setTaskName] = useState('');
-    const [taskDescription, setTaskDescription] = useState('');
-    const [taskStartTime, setTaskStartTime] = useState(new Date());
-    const [taskEndTime, setTaskEndTime] = useState(new Date(Date.now() + 24 * 60 * 60 * 1000));
-    const [showStartPicker, setShowStartPicker] = useState(false);
-    const [showEndPicker, setShowEndPicker] = useState(false);
-    const [taskReminder, setTaskReminder] = useState(ReminderEnum.None);
-    const [taskPriority, setTaskPriority] = useState(0);
     const { projectId } = useLocalSearchParams();
     const router = useRouter();
-    const [isLeader, setIsLeader] = useState(false);
     const isFocused = useIsFocused();
-    const [isStartDateTimeChosen, setIsStartDateTimeChosen] = useState(false);
-    const [isEndDateTimeChosen, setIsEndDateTimeChosen] = useState(false);
-    const [showStartTimePicker, setShowStartTimePicker] = useState(false);
-    const [showEndTimePicker, setShowEndTimePicker] = useState(false);
-    const today = moment();
-
     useEffect(() => {
         fetchTasks();
     }, [projectId, isFocused]);
 
     const fetchTasks = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const response = await fetch(`https://smnc.site/api/ProjectTasks?projectId=${projectId}&isGroupByWeek=true&orderByStartTime=true`, {
                 headers: {
                     'accept': '*/*',
@@ -96,7 +72,7 @@ const MentorLectuerProjectTaskListScreen = () => {
             }
 
         } catch (error) {
-            console.error('Error fetching tasks:', error);
+            // console.log('Error fetching tasks:', error);
             setError('Failed to fetch tasks.');
         } finally {
             setLoading(false);

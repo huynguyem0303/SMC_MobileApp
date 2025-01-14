@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, 
 import { useRouter,useLocalSearchParams } from 'expo-router';
 import RNPickerSelect from 'react-native-picker-select';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 
 type Project = {
   id: string;
@@ -37,7 +39,11 @@ const ProjectListScreen = () => {
   semesterId
   const fetchProjects = async () => { 
     try {
-      const token = await AsyncStorage.getItem('@userToken');
+      const token = await checkToken();
+      if (token === null) {
+        showSessionExpiredAlert(router);
+        return;
+    }
       const response = await fetch(`https://smnc.site/api/Projects?PageSize=50&courseId=${courseId}&semesterId=${semesterId}`, {
         method: 'GET',
         headers: {
@@ -51,7 +57,7 @@ const ProjectListScreen = () => {
       // console.log(data.data.data);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching project data:', error);
+      console.log('Error fetching project data:', error);
       setLoading(false);
     }
   };

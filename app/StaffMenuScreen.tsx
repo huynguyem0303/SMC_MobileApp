@@ -7,7 +7,8 @@ import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, Animated, 
 import { useRouter } from 'expo-router';
 import getToken from '../components/Jwt/getToken';
 const { width } = Dimensions.get('window');
-
+import { checkToken } from '../components/checkToken'; 
+import { showSessionExpiredAlert } from '../components/alertUtils'; 
 const StaffMenuScreen = () => {
     const router = useRouter();
     const slideAnim = useRef(new Animated.Value(width)).current; // Initial value for slide: off-screen
@@ -17,25 +18,34 @@ const StaffMenuScreen = () => {
     const [picture, setPicture] = useState(null);
     const [name, setName] = useState(null);
     useEffect(() => {
+        // Slide-in animation
         Animated.timing(slideAnim, {
-            toValue: 0, duration: 500, // Slide in over 0.5 seconds 
-            useNativeDriver: true,
-        }).start(); // Retrieve token and set email 
+          toValue: 0,
+          duration: 500, // Slide in over 0.5 seconds
+          useNativeDriver: true,
+        }).start();
+        // Retrieve token and set email
         const retrieveToken = async () => {
-            try {
-                const decodedToken = await getToken(); // Use getToken to retrieve and decode the token 
-                if (decodedToken) {
-                    setEmail(decodedToken.email);
-                    //console.log('Decoded token:', decodedToken);
-                } else {
-                    console.log('No token found');
-                }
-            } catch (error) {
-                console.log('Error retrieving token: ', error);
+          try {
+            const token = await checkToken();
+            if (token !== null) {
+              const decodedToken = await getToken();
+              if (decodedToken) {
+                setEmail(decodedToken.email);
+              } else {
+                console.log('No decoded token found');
+              }
+            } else {
+             
             }
-        }; retrieveToken();
-
-    }, [slideAnim]);
+          } catch (error) {
+            console.log('Error retrieving token: ', error);
+          }
+        };
+    
+        retrieveToken();
+      }, [slideAnim, router]);
+    
     const toggleMenu = () => {
         setMenuVisible(!menuVisible);
         Animated.timing(menuAnim, {
@@ -59,7 +69,7 @@ const StaffMenuScreen = () => {
             console.log('User signed out');
             router.replace('/Authen/LoginScreen'); // Ensure this route exists 
         } catch (error) {
-            console.error('Error Log out:', error);
+            console.log('Error Log out:', error);
         }
     };
 

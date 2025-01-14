@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-
+import { checkToken } from '../../components/checkToken'; 
+import { showSessionExpiredAlert } from '../../components/alertUtils'; 
 interface Project {
     id:string,
     projectName: string;
@@ -22,7 +23,12 @@ const MentorLecturerProjectListScreen = () => {
 
     const fetchProjects = async () => {
         try {
-            const token = await AsyncStorage.getItem('@userToken');
+            const token = await checkToken();
+            if (token === null) {
+                showSessionExpiredAlert(router);
+                return;
+            }
+
             const storedRole = await AsyncStorage.getItem('@role');
             const storedId = await AsyncStorage.getItem('@id');
 
@@ -45,7 +51,7 @@ const MentorLecturerProjectListScreen = () => {
                     url = `https://smnc.site/api/Projects?lecturerId=${parsedId}`;
                 }
 
-                console.log('URL:', url);
+                // console.log('URL:', url);
 
                 if (url) {
                     const response = await fetch(url, {
@@ -56,7 +62,7 @@ const MentorLecturerProjectListScreen = () => {
                         },
                     });
                     const data = await response.json();
-                    console.log('Response Data:', data);
+                    // console.log('Response Data:', data);
                     
                     setProjects(data.data.data); // Adjusting the path to the correct location
 
@@ -70,7 +76,7 @@ const MentorLecturerProjectListScreen = () => {
                 }
             }
         } catch (error) {
-            console.error('Error fetching project data:', error);
+            console.log('Error fetching project data:', error);
             setLoading(false); // Set loading to false in case of error
         }
     };
