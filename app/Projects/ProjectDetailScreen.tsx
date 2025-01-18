@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Image, TextInput, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, ScrollView, Image, TextInput, Alert, Modal, Dimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import getToken from '../../components/Jwt/getToken';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { checkToken } from '../../components/checkToken'; 
+import { checkToken } from '../../components/checkToken';
 import { showSessionExpiredAlert } from '../../components/alertUtils';
+const { width, height } = Dimensions.get('window');
 type MentorLecturer = {
   name: string;
-  roleType: 'Mentor' | 'Lecturer';
+  roleTypeEnum: number;
 };
 
 type TeamMember = {
@@ -39,14 +40,15 @@ const ProjectDetailScreen = () => {
   const [reason, setReason] = useState<string>('');
   const router = useRouter();
   const { projectId } = useLocalSearchParams();
-
+  const minHeight = height * 0.3; // for example, 30% of screen height 
+  const imageHeight = Math.max((width * 300) / 450, minHeight);
   const fetchProjectDetail = async () => {
     try {
       const token = await checkToken();
       if (token === null) {
         showSessionExpiredAlert(router);
         return;
-    }
+      }
       const response = await fetch(`https://smnc.site/api/Projects/${projectId}`, {
         method: 'GET',
         headers: {
@@ -97,29 +99,29 @@ const ProjectDetailScreen = () => {
 
     // Ensure the reason is not empty
     if (reason.trim() === '') {
-        Alert.alert('Input Required', 'Please enter your reason for joining the team.');
-        return;
+      Alert.alert('Input Required', 'Please enter your reason for joining the team.');
+      return;
     }
 
     // Validate the length (not exceeding 200 words)
     const wordCount = reason.trim().split(/\s+/).length;
     if (wordCount > 200) {
-        Alert.alert('Input Too Long', 'Your reason for joining the team should not exceed 200 words.');
-        return;
+      Alert.alert('Input Too Long', 'Your reason for joining the team should not exceed 200 words.');
+      return;
     }
     // Validate that the reason doesn't contain any special characters
-    const specialCharPattern = /[^a-zA-Z0-9\s]/;
+    const specialCharPattern = /[^\p{L}\p{N}\s]/u;
     if (specialCharPattern.test(reason)) {
-        Alert.alert('Invalid Characters', 'Your reason should not contain any special characters.');
-        return;
+      Alert.alert('Invalid Characters', 'Your reason should not contain any special characters.');
+      return;
     }
     const value = await AsyncStorage.getItem('@haveTeam');
     if (value !== null) { // Value was found, parse it as needed 
-        const haveTeam = JSON.parse(value);
-        if (haveTeam) {
-            Alert.alert('Error', 'You already have a team.');
-            return;
-        }
+      const haveTeam = JSON.parse(value);
+      if (haveTeam) {
+        Alert.alert('Error', 'You already have a team.');
+        return;
+      }
     }
     const requestBody = {
       type: 0,
@@ -187,6 +189,16 @@ const ProjectDetailScreen = () => {
 
   const { projectName, projectDetail: detail, coverImage, mentorsAndLecturers, memberWanted, team } = projectDetail;
 
+  const sortedMentorsAndLecturers = projectDetail?.mentorsAndLecturers.sort((a, b) => {
+    if ((a.roleTypeEnum === 0 || a.roleTypeEnum === 1) && (b.roleTypeEnum === 2 || b.roleTypeEnum === 3)) {
+      return -1; // Bring 'lecturer' and 'mentor' to the top
+    }
+    if ((a.roleTypeEnum === 2 || a.roleTypeEnum === 3) && (b.roleTypeEnum === 0 || b.roleTypeEnum === 1)) {
+      return 1; // Push 'extra mentor' and 'extra lecturer' to the bottom
+    }
+    return 0;
+  });
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.header}>
@@ -195,45 +207,59 @@ const ProjectDetailScreen = () => {
         </TouchableOpacity>
         <Text style={styles.headerText}>Project Detail</Text>
       </View>
-      {coverImage && (
-        <Image source={{ uri: coverImage }} style={styles.coverImage} />
-      )}
-      <View style={styles.projectDetailContainer}>
-        <Text style={styles.projectTitle}>{projectName}</Text>
-        <Text style={styles.projectDescription}>{detail}</Text>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Mentors:</Text>
-          {mentorsAndLecturers.filter(m => m.roleType === 'Mentor').map((mentor, index) => (
-            <Text key={index} style={styles.personName}>{mentor.name}</Text>
-          ))}
-        </View>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Lecturers:</Text>
-          {mentorsAndLecturers.filter(m => m.roleType === 'Lecturer').map((lecturer, index) => (
-            <Text key={index} style={styles.personName}>{lecturer.name}</Text>
-          ))}
-        </View>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Team Members:</Text>
-          {team.members
-            .filter(member => !member.isDeleted)
-            .sort((a, b) => (b.isLeader ? 1 : -1) - (a.isLeader ? 1 : -1))
-            .map((member, index) => (
-              <Text key={index} style={styles.personName}>
-                {member.studentName} - {member.studentCode} - {member.memberRole} {member.isLeader ? '(Leader)' : ''}
-              </Text>
-            ))}
-        </View>
+      <View style={styles.contentContainer}>
+        {coverImage && (
+          <Image source={{ uri: coverImage }} style={styles.coverImage} />
+        )}
+        <View style={styles.projectDetailContainer}>
+          <Text style={styles.projectTitle}>{projectName}</Text>
+          <Text style={styles.projectDescription}>{detail}</Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Mentors:</Text>
+            {sortedMentorsAndLecturers
+              .filter(m => m.roleTypeEnum === 1 || m.roleTypeEnum === 2)
+              .map((person, index) => (
+                <Text key={index} style={styles.personName}>
+                  {person.name} (
+                  {person.roleTypeEnum === 1 ? 'Mentor' : 'Extra mentor'}
+                  )
+                </Text>
+              ))}
+          </View>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Lecturers:</Text>
+            {sortedMentorsAndLecturers
+              .filter(m => m.roleTypeEnum === 0 || m.roleTypeEnum === 3)
+              .map((person, index) => (
+                <Text key={index} style={styles.personName}>
+                  {person.name} (
+                  {person.roleTypeEnum === 0 ? 'Lecturer' : 'Extra Lecturer'}
+                  )
+                </Text>
+              ))}
+          </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Member Wanted:</Text>
-          <Text style={styles.personName}>{memberWanted}</Text>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Team Members:</Text>
+            {team.members
+              .filter(member => !member.isDeleted)
+              .sort((a, b) => (b.isLeader ? 1 : -1) - (a.isLeader ? 1 : -1))
+              .map((member, index) => (
+                <Text key={index} style={styles.personName}>
+                  {member.studentName} - {member.studentCode} - {member.memberRole} {member.isLeader ? '(Leader)' : ''}
+                </Text>
+              ))}
+          </View>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Member Wanted:</Text>
+            <Text style={styles.personName}>{memberWanted}</Text>
+          </View>
+          <TouchableOpacity style={styles.joinButton} onPress={() => setShowModal(true)}>
+            <Text style={styles.joinButtonText}>Request to Join Team</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.joinButton} onPress={() => setShowModal(true)}>
-          <Text style={styles.joinButtonText}>Request to Join Team</Text>
-        </TouchableOpacity>
       </View>
-
       <Modal visible={showModal} animationType="slide" transparent={true}>
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
@@ -256,7 +282,6 @@ const ProjectDetailScreen = () => {
     </ScrollView>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: {
@@ -296,47 +321,18 @@ const styles = StyleSheet.create({
     flex: 1,
     marginTop: 30,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    color: 'red',
-    fontSize: 18,
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  noProjectContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  noProjectText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  projectDetailContainer: {
+  contentContainer: {
+    flexDirection: 'row',
     padding: 20,
   },
   coverImage: {
-    width: '100%',
+    width: 150,
     height: 200,
-    resizeMode: 'cover',
-    marginBottom: 20,
+    borderRadius: 10,
+    marginRight: 20,
+  },
+  projectDetailContainer: {
+    flex: 1,
   },
   projectTitle: {
     fontSize: 24,
@@ -404,6 +400,37 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+  }, loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: 'red',
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
+  }, noProjectContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  noProjectText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
   },
 });
 

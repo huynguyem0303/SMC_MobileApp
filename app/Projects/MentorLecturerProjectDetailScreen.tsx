@@ -193,13 +193,13 @@ const MentorLecturerProjectDetailScreen = () => {
                         ))}
 
                         <View style={styles.inlineContainer}>
-                            <Text style={styles.time}>Milestones:</Text>
+                            <Text style={styles.time}>Milestone:</Text>
                             <TouchableOpacity onPress={() => setModalVisible(true)}>
                                 <Text style={styles.detailMilestoneText}>Details</Text>
                             </TouchableOpacity>
                         </View>
                         <View style={styles.inlineContainer}>
-                            <Text style={styles.time}>Finances:</Text>
+                            <Text style={styles.time}>Finance:</Text>
                             <TouchableOpacity onPress={handleFinance}>
                                 <Text style={styles.detailMilestoneText}>Details</Text>
                             </TouchableOpacity>

@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Button } from 'react-native';
-import { useRouter,useLocalSearchParams } from 'expo-router';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, Button, Alert, TextInput ,Image,} from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import RNPickerSelect from 'react-native-picker-select';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { checkToken } from '../../components/checkToken'; 
-import { showSessionExpiredAlert } from '../../components/alertUtils'; 
-
+import { checkToken } from '../../components/checkToken';
+import { showSessionExpiredAlert } from '../../components/alertUtils';
 type Project = {
   id: string;
   projectName: string;
@@ -14,11 +13,11 @@ type Project = {
   mentorsAndLecturers: { name: string; roleType: string }[];
   memberWantedStatus: boolean;
   memberWanted: string | null;
-  isDeleted:boolean;
+  isDeleted: boolean;
 };
 
 const ProjectListScreen = () => {
-  const { semesterId,courseId} = useLocalSearchParams();
+  const { semesterId, courseId } = useLocalSearchParams();
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,6 +26,7 @@ const ProjectListScreen = () => {
   const [selectedMemberWanted, setSelectedMemberWanted] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const projectsPerPage = 10;
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const router = useRouter();
 
   useEffect(() => {
@@ -36,15 +36,15 @@ const ProjectListScreen = () => {
   useEffect(() => {
     filterProjects();
   }, [selectedCategory, selectedCourse, selectedMemberWanted, projects, currentPage]);
-  semesterId
-  const fetchProjects = async () => { 
+
+  const fetchProjects = async (searchTerm: string = '') => {
     try {
       const token = await checkToken();
       if (token === null) {
         showSessionExpiredAlert(router);
         return;
-    }
-      const response = await fetch(`https://smnc.site/api/Projects?PageSize=50&courseId=${courseId}&semesterId=${semesterId}`, {
+      }
+      const response = await fetch(`https://smnc.site/api/Projects?PageSize=20&courseId=${courseId}&semesterId=${semesterId}&SearchTerm=${searchTerm}`, {
         method: 'GET',
         headers: {
           'accept': 'text/plain',
@@ -54,13 +54,15 @@ const ProjectListScreen = () => {
       const data = await response.json();
       const filteredProjects = data.data.data.filter((project: Project) => !project.isDeleted);
       setProjects(filteredProjects);
-      // console.log(data.data.data);
       setLoading(false);
     } catch (error) {
       console.log('Error fetching project data:', error);
+      Alert.alert('Error', 'Failed to fetch project data. Please try again later.');
       setLoading(false);
     }
   };
+
+
   const filterProjects = () => {
     let filtered = projects.filter(project => project.memberWantedStatus);
 
@@ -90,41 +92,41 @@ const ProjectListScreen = () => {
     setFilteredProjects(paginatedProjects);
   };
 
-  const renderProjectItem = ({ item }: { item: Project }) => {
+  const renderProjectItem = useCallback(({ item }: { item: Project }) => {
     const mentors = item.mentorsAndLecturers.filter((person) => person.roleType === 'Mentor');
     const lecturers = item.mentorsAndLecturers.filter((person) => person.roleType === 'Lecturer');
     const memberWantedArray = item.memberWanted ? item.memberWanted.split(',').map(role => role.trim()).filter(Boolean) : [];
     const { semester, course } = item.semesterAndCourse;
-  
+
     return (
       <View style={styles.projectContainer}>
         <View style={styles.projectDetails}>
           <Text style={styles.projectTitle}>{item.projectName || 'No Project Name'}</Text>
-          
+
           <View style={styles.inlineTextWrap}>
             <Text style={styles.projectSectionTitle}>Lecturers:</Text>
             {lecturers.map((lecturer, index) => (
               <Text key={index} style={styles.personName}>{lecturer.name}</Text>
             ))}
           </View>
-          
+
           <View style={styles.inlineTextWrap}>
             <Text style={styles.projectSectionTitle}>Mentors:</Text>
             {mentors.map((mentor, index) => (
               <Text key={index} style={styles.personName}>{mentor.name}</Text>
             ))}
           </View>
-          
+
           <View style={styles.inlineTextWrap}>
             <Text style={styles.projectSectionTitle}>Course:</Text>
             <Text style={styles.personName}>{course}</Text>
           </View>
-          
+
           <View style={styles.inlineTextWrap}>
             <Text style={styles.projectSectionTitle}>Category:</Text>
             <Text style={styles.personName}>{item.category}</Text>
           </View>
-          
+
           <View style={styles.inlineTextWrap}>
             <Text style={styles.projectSectionTitle}>Recruitment requirements:</Text>
             {memberWantedArray.length > 0 ? (
@@ -135,17 +137,19 @@ const ProjectListScreen = () => {
               <Text style={styles.personName}>No roles listed</Text>
             )}
           </View>
-          
+
           <TouchableOpacity style={styles.detailButton} onPress={() => handleDetail(item)}>
             <Text style={styles.detailButtonText}>Check Detail</Text>
           </TouchableOpacity>
         </View>
       </View>
     );
-  };  
+  }, []);
+
   const handleDetail = (project: Project) => {
     router.push(`/Projects/ProjectDetailScreen?projectId=${project.id}`);
   };
+
   const handleNextPage = () => {
     if (currentPage < Math.ceil(projects.length / projectsPerPage)) {
       setCurrentPage(currentPage + 1);
@@ -157,9 +161,11 @@ const ProjectListScreen = () => {
       setCurrentPage(currentPage - 1);
     }
   };
+
   if (loading) {
     return <ActivityIndicator size="large" color="#0000ff" />;
   }
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -167,6 +173,23 @@ const ProjectListScreen = () => {
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
         <Text style={styles.headerText}>Project List</Text>
+      </View>
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchBar}
+          placeholder="Search projects..."
+          value={searchQuery}
+          onChangeText={(text) => {
+            setSearchQuery(text);
+            fetchProjects(text);
+          }}
+        />
+        <TouchableOpacity style={styles.searchButton} onPress={() => fetchProjects(searchQuery)}>
+          <Image
+            source={require('../../assets/images/search-icon.png')}
+            style={styles.searchIcon}
+          />
+        </TouchableOpacity>
       </View>
       <View style={styles.pickerContainer}>
         <View style={styles.pickerBorder}>
@@ -210,7 +233,7 @@ const ProjectListScreen = () => {
       </View>
       {filteredProjects.length > 0 ? (
         <>
-                    <FlatList
+          <FlatList
             data={filteredProjects}
             renderItem={renderProjectItem}
             keyExtractor={(item) => item.id}
@@ -223,139 +246,168 @@ const ProjectListScreen = () => {
           </View>
         </>
       ) : (
-        <Text style={styles.noProjectsText}>Project not found</Text>
+        <Text style={styles.noProjectsText}>No projects found</Text>
       )}
     </View>
   );
+  
 };
 const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#fff',
-    },
-    header: {
-        backgroundColor: '#003366',
-        padding: 20,
-        alignItems: 'center',
-        flexDirection: 'row',
-    },
-    backButton: {
-        position: 'absolute',
-        left: 5,
-    },
-    backButtonText: {
-        fontSize: 40,
-        color: '#fff',
-    },
-    detailButton: {
-        backgroundColor: '#003366',
-        padding: 10,
-        borderRadius: 5,
-        marginTop: 20,
-        alignItems: 'center',
-      },
-    headerText: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: '#fff',
-        textAlign: 'center',
-        flex: 1,
-        marginTop: 30,
-    },
-    pickerContainer: {
-        padding: 10,
-    },
-    pickerBorder: {
-        borderWidth: 1,
-        borderColor: '#000',
-        borderRadius: 5,
-        marginBottom: 10,
-    },
-    listContentContainer: {
-        padding: 10,
-    },
-    projectContainer: {
-        flexDirection: 'row',
-        marginBottom: 15,
-        padding: 10,
-        backgroundColor: '#f9f9f9',
-        borderRadius: 5,
-        borderWidth: 1,
-        borderColor: '#ddd',
-    },
-    projectDetails: {
-        flex: 1,
-        justifyContent: 'center',
-    },
-    projectTitle: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        marginBottom: 10,
-        textAlign: 'center',
-    },
-    projectCategory: {
-        fontSize: 18,
-        marginBottom: 10,
-    },
-    projectSectionTitle: {
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    personName: {
-        fontSize: 16,
-        marginLeft: 10,
-    },
-    detailButtonText: {
-        color: '#fff',
-        fontWeight: 'bold',
-      },
-    inlineTextWrap: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 10,
-        flexWrap: 'wrap',
-    },
-    noProjectsText: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginTop: 20,
-        color: '#333',
-    },
-    paginationContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: 10,
-    },
-    paginationText: {
-        fontSize: 16,
-        fontWeight: 'bold',
-    }
+  container: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  header: {
+    backgroundColor: '#003366',
+    padding: 20,
+    alignItems: 'center',
+    flexDirection: 'row',
+  },
+  backButton: {
+    position: 'absolute',
+    left: 5,
+  },
+  backButtonText: {
+    fontSize: 40,
+    color: '#fff',
+  },
+  detailButton: {
+    backgroundColor: '#003366',
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 20,
+    alignItems: 'center',
+  },
+  headerText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#fff',
+    textAlign: 'center',
+    flex: 1,
+    marginTop: 30,
+  },
+  pickerContainer: {
+    padding: 10,
+  },
+  pickerBorder: {
+    borderWidth: 1,
+    borderColor: '#000',
+    borderRadius: 5,
+    marginBottom: 10,
+  },
+  listContentContainer: {
+    padding: 10,
+  },
+  projectContainer: {
+    flexDirection: 'row',
+    marginBottom: 15,
+    padding: 10,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  projectDetails: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  projectTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  projectCategory: {
+    fontSize: 18,
+    marginBottom: 10,
+  },
+  projectSectionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  personName: {
+    fontSize: 16,
+    marginLeft: 10,
+  },
+  detailButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  inlineTextWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    flexWrap: 'wrap',
+  },
+  noProjectsText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginTop: 20,
+    color: '#333',
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+  },
+  paginationText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  }, 
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 20,
+    marginBottom: 15,
+  },
+  searchBar: {
+    flex: 1,
+    padding: 10,
+    fontSize: 16,
+    borderColor: '#ddd',
+    borderWidth: 1,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+  },
+  searchButton: {
+    padding: 10,
+    marginLeft: 10,
+    backgroundColor: '#003366',
+    borderRadius: 20,
+  },
+  searchIcon: {
+    width: 20,
+    height: 20,
+  },
+
 });
 const pickerSelectStyles = StyleSheet.create({
-    inputIOS: {
-        fontSize: 16,
-        paddingVertical: 6,
-        paddingHorizontal: 10,
-        borderWidth: 1,
-        borderColor: 'gray',
-        borderRadius: 4,
-        color: 'black',
-        paddingRight: 30,
-        height: 40
-    },
-    inputAndroid: {
-        fontSize: 16,
-        paddingHorizontal: 6,
-        paddingVertical: 8,
-        borderWidth: 0.5,
-        borderColor: 'gray',
-        borderRadius: 8,
-        color: 'black',
-        paddingRight: 30,
-        height: 40
+  inputIOS: {
+    fontSize: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: 'gray',
+    borderRadius: 4,
+    color: 'black',
+    paddingRight: 30,
+    height: 40
+  },
+  inputAndroid: {
+    fontSize: 16,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    borderWidth: 0.5,
+    borderColor: 'gray',
+    borderRadius: 8,
+    color: 'black',
+    paddingRight: 30,
+    height: 40
 
-    },
+  },
 });
 export default ProjectListScreen;

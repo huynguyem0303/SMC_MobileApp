@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ActivityIndicator, Alert, StyleSheet, ScrollView, Image, TouchableOpacity, Switch, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { checkToken } from '../../components/checkToken'; 
-import { showSessionExpiredAlert } from '../../components/alertUtils'; 
+import { checkToken } from '../../components/checkToken';
+import { showSessionExpiredAlert } from '../../components/alertUtils';
 // Define TypeScript interfaces for the project details
 interface SemesterAndCourse {
     semesterId: string;
@@ -16,6 +16,7 @@ interface Mentor {
     accountId: string;
     name: string;
     roleType: string;
+    roleTypeEnum: number;
     description: string;
 }
 
@@ -85,7 +86,8 @@ const MyProjectScreen = () => {
                         'Authorization': `Bearer ${token}`,
                     },
                 });
-
+                console.log(courseId);
+                console.log(semesterId);
                 const data = await response.json();
 
                 if (data.status && data.data.data && data.data.data.length > 0) {
@@ -235,6 +237,7 @@ const MyProjectScreen = () => {
             },
         });
     };
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -251,7 +254,11 @@ const MyProjectScreen = () => {
             </View>
         );
     }
-
+    const sortedMentorsAndLecturers = projectDetail?.mentorsAndLecturers.sort((a, b) => {
+        if (a.roleTypeEnum === b.roleTypeEnum) return 0;
+        if (a.roleTypeEnum < 2) return -1; // Bring 'lecturer' and 'mentor' to the top
+        return 1; // Push 'extra mentor' and 'extra lecturer' to the bottom
+    });
     return (
         <View style={styles.container}>
             <View style={styles.header}>
@@ -285,24 +292,35 @@ const MyProjectScreen = () => {
                             <Text style={styles.detailText}>{projectDetail?.category}</Text>
                         </View>
                         <Text style={styles.sectionTitle}>Mentors and Lecturers:</Text>
-                        {projectDetail?.mentorsAndLecturers.map((mentor: Mentor, index: number) => (
+                        {sortedMentorsAndLecturers?.map((mentor: Mentor, index: number) => (
                             <View key={index} style={styles.mentorContainer}>
                                 <Text style={styles.personName}>
-                                    {mentor.name} ({mentor.roleType})
+                                    {mentor.name} (
+                                    {mentor.roleTypeEnum === 0
+                                        ? 'Lecturer'
+                                        : mentor.roleTypeEnum === 1
+                                            ? 'Mentor'
+                                            : mentor.roleTypeEnum === 2
+                                                ? 'Extra mentor'
+                                                : mentor.roleTypeEnum === 3
+                                                    ? 'Extra Lecturer'
+                                                    : 'Unknown'}
+                                    )
                                 </Text>
                                 {/* <Text style={styles.personDescription}>
-                                    {mentor.description}
-                                </Text> */}
+            {mentor.description}
+        </Text> */}
                             </View>
                         ))}
+
                         <View style={styles.inlineContainer}>
-                            <Text style={styles.time}>Milestones:</Text>
+                            <Text style={styles.time}>Milestone:</Text>
                             <TouchableOpacity onPress={handleMilestone}>
                                 <Text style={styles.detailMilestoneText}>Details</Text>
                             </TouchableOpacity>
                         </View>
                         <View style={styles.inlineContainer}>
-                            <Text style={styles.time}>Finances:</Text>
+                            <Text style={styles.time}>Finance:</Text>
                             <TouchableOpacity onPress={handleFinance}>
                                 <Text style={styles.detailMilestoneText}>Details</Text>
                             </TouchableOpacity>

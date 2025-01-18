@@ -9,8 +9,8 @@ import getToken from '../../components/Jwt/getToken'; // Adjust the path if nece
 import DocumentPicker, { DocumentPickerResponse } from 'react-native-document-picker';
 import { format } from 'date-fns';
 import RNFetchBlob from 'rn-fetch-blob';
-import { checkToken } from '../../components/checkToken'; 
-import { showSessionExpiredAlert } from '../../components/alertUtils'; 
+import { checkToken } from '../../components/checkToken';
+import { showSessionExpiredAlert } from '../../components/alertUtils';
 enum TaskStatusEnum {
     NotStarted = 0,
     InProgress,
@@ -137,8 +137,10 @@ const TaskDetailScreen = () => {
             }
             setIsStartDateTimeChosen(false);
             setIsEndDateTimeChosen(false);
-        
-
+            setShowStartPicker(false);
+            setShowEndPicker(false);
+            setShowStartTimePicker(false);
+            setShowEndPicker(false);
             const response = await fetch(`https://smnc.site/api/ProjectTasks/${taskId}`, {
                 method: 'GET',
                 headers: {
@@ -150,8 +152,18 @@ const TaskDetailScreen = () => {
             const data = await response.json();
             if (data.status) {
                 setTask(data.data);
-                setTaskStartTime(new Date(data.data.startTime));
-                setTaskEndTime(new Date(data.data.endTime));
+                // console.log(taskStartTime);
+                const startTime = new Date(data.data.startTime);
+                const endTime = new Date(data.data.endTime);
+                // Adjust startTime to the local time zone
+                const localStartTime = new Date(startTime.getTime() - startTime.getTimezoneOffset() * 60 * 1000);
+                const localEndTime = new Date(endTime.getTime() - endTime.getTimezoneOffset() * 60 * 1000);
+                setTaskStartTime(localStartTime);
+                setTaskEndTime(localEndTime);
+                // Log the original and adjusted times
+                // console.log(data.data.startTime); // Original start time from data
+                // console.log(localStartTime); // Adjusted start time in local time zone
+                // console.log(taskStartTime);
                 const decodedToken = await getToken();
                 if (decodedToken != null) {
                     setAccId(decodedToken.id);
@@ -319,13 +331,13 @@ const TaskDetailScreen = () => {
                 return false;
             }
         };
-    
+
         const permissionGranted = await requestStoragePermission();
         if (!permissionGranted) {
             Alert.alert('Permission Denied', 'You need to grant storage permission to download files.');
             return;
         }
-    
+
         Alert.alert(
             'Download File',
             'Do you want to download this file?',
@@ -339,7 +351,7 @@ const TaskDetailScreen = () => {
                     onPress: () => {
                         const { config, fs } = RNFetchBlob;
                         const downloads = fs.dirs.DownloadDir;
-    
+
                         config({
                             fileCache: true,
                             addAndroidDownloads: {
@@ -364,7 +376,7 @@ const TaskDetailScreen = () => {
             { cancelable: false }
         );
     };
-    
+
 
 
     const handleDeleteDocument = async (documentId: any) => {
@@ -384,7 +396,7 @@ const TaskDetailScreen = () => {
                             if (token === null) {
                                 showSessionExpiredAlert(router);
                                 return;
-                            }            
+                            }
                             const response = await fetch(`https://smnc.site/api/Documents/${documentId}`, {
                                 method: 'DELETE',
                                 headers: {
@@ -463,7 +475,7 @@ const TaskDetailScreen = () => {
                                     showSessionExpiredAlert(router);
                                     return;
                                 }
-                
+
                                 const response = await fetch(`https://smnc.site/api/ProjectTasks/${task.id}`, {
                                     method: 'PUT',
                                     headers: {
@@ -477,7 +489,7 @@ const TaskDetailScreen = () => {
                                         startTime: taskStartTime.toISOString(),
                                         endTime: taskEndTime.toISOString(),
                                         reminder: task.reminder,
-                                        priority: taskPriority,
+                                        priority: task.priority,
                                         id: task.id,
                                         status: task.status
                                     })
@@ -544,7 +556,7 @@ const TaskDetailScreen = () => {
                                     showSessionExpiredAlert(router);
                                     return;
                                 }
-                
+
 
                                 const response = await fetch(`https://smnc.site/api/ProjectTasks/${task.id}/UnAssignTeamMember?teamMemberId=${JSON.parse(memberId)}`, {
                                     method: 'DELETE',
@@ -608,7 +620,11 @@ const TaskDetailScreen = () => {
                     />
                     <Text style={styles.label}>Start Date and Time</Text>
                     <TouchableOpacity onPress={() => setShowStartPicker(true)} style={styles.dateInput}>
-                        <Text>{isStartDateTimeChosen ? new Date(taskStartTime).toLocaleString('en-GB', { timeZone: 'Europe/London', hour12: false }) : format(taskStartTime, 'dd/MM/yyyy HH:mm:ss')}</Text>
+                        <Text>
+                            {isStartDateTimeChosen
+                                ? new Date(taskStartTime).toLocaleString('en-GB', { timeZone: 'Europe/London', hour12: false })
+                                : new Date(taskStartTime).toLocaleString('en-GB', { timeZone: 'Europe/London', hour12: false })}
+                        </Text>
                     </TouchableOpacity>
                     {showStartPicker && (
                         <DateTimePicker
@@ -646,7 +662,7 @@ const TaskDetailScreen = () => {
                     )}
                     <Text style={styles.label}>End Date and Time</Text>
                     <TouchableOpacity onPress={() => setShowEndPicker(true)} style={styles.dateInput}>
-                        <Text>{isEndDateTimeChosen ? new Date(taskEndTime).toLocaleString('en-GB', { timeZone: 'Europe/London', hour12: false }) : format(taskEndTime, 'dd/MM/yyyy HH:mm:ss')}</Text>
+                        <Text>{isEndDateTimeChosen ? new Date(taskEndTime).toLocaleString('en-GB', { timeZone: 'Europe/London', hour12: false }) :  new Date(taskEndTime).toLocaleString('en-GB', { timeZone: 'Europe/London', hour12: false })}</Text>
                     </TouchableOpacity>
                     {showEndPicker && (
                         <DateTimePicker
@@ -755,7 +771,7 @@ const TaskDetailScreen = () => {
                     </View>
 
 
-                    {!isLeader && memberMatch && task.status !== TaskStatusEnum.Completed && (
+                    {!isLeader && memberMatch && task.status !== TaskStatusEnum.Completed && new Date() <= new Date(task.endTime) && (
                         <>
                             <TouchableOpacity style={styles.editButton} onPress={() => setEditing(true)}>
                                 <Text style={styles.editButtonText}>Edit</Text>
@@ -767,7 +783,7 @@ const TaskDetailScreen = () => {
                             <Text style={styles.editButtonText}>Edit</Text>
                         </TouchableOpacity>
                     )}
-                    {memberMatch && (
+                    {memberMatch && new Date() <= new Date(task.endTime) && (
                         <TouchableOpacity style={styles.unassignButton} onPress={handleUnassign}>
                             <Text style={styles.unassignButtonText}>Unassign Task</Text>
                         </TouchableOpacity>
@@ -1140,7 +1156,7 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     linkText: {
-        fontSize:16,
+        fontSize: 16,
         color: 'blue',
         textDecorationLine: 'underline',
         marginBottom: 10,

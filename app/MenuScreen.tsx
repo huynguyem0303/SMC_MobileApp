@@ -85,7 +85,35 @@ const fetchTeamDetails = async (courseId: string, semesterId: string, userToken:
         throw error;
     }
 };
-
+const fetchProjectDetail = async (courseId: string, semesterId: string, userToken: string): Promise<number> => {
+    try {
+      const response = await fetch(
+        `https://smnc.site/api/Projects/CurrentUserProject?courseId=${courseId}&semesterId=${semesterId}&isPaging=false`,
+        {
+          headers: {
+            'accept': 'text/plain',
+            'Authorization': `Bearer ${userToken}`,
+          },
+        }
+      );
+  
+      const data = await response.json();
+    //   console.log(data);
+  
+      if (data.status && data.data && Array.isArray(data.data) && data.data.length > 0) {
+        return data.data[0].projectStatus; // Returns the project status as number
+      } else {
+        console.log('No projects found');
+        return -1; // Default value if no projects are found
+      }
+    } catch (error) {
+      console.log('Error fetching project detail:', error);
+      return -1; // Default value in case of error
+    }
+  };
+  
+  
+  
 
 const MenuScreen = () => {
     const router = useRouter();
@@ -101,6 +129,7 @@ const MenuScreen = () => {
     const [courseDetails, setCourseDetails] = useState<{ courseId: string | null; semesterId: string | null }>({ courseId: null, semesterId: null });
     const [loading, setLoading] = useState<boolean>(true); // Loading state
     const [memberCount, setMemberCount] = useState<number>(0);
+    const [status, setStatus] = useState<number>(0);
     const isFocused = useIsFocused();
     useEffect(() => {
         Animated.timing(slideAnim, {
@@ -142,8 +171,8 @@ const MenuScreen = () => {
                                     semesterId: courseDetails.data.semesterId,
                                 });
                                 // console.log('Course Details:', courseDetails);
-                                // console.log("Course:", courseDetails.data.courseId);
-                                // console.log("Semester:", courseDetails.data.semesterId);
+                                //  console.log("Course:", courseDetails.data.courseId);
+                                //  console.log("Semester:", courseDetails.data.semesterId);
                                 if (courseDetails.data.courseId && courseDetails.data.semesterId) {
                                     // Fetch team details using courseId and semesterId
 
@@ -166,6 +195,8 @@ const MenuScreen = () => {
                                         const memberid=member?.id;
                                         // console.log("isLeader:",isCurrentUserLeader);
                                         setStudentCode(parsedData.student.studentCode);
+                                        const projectStatus = await fetchProjectDetail(courseDetails.data.courseId, courseDetails.data.semesterId, token);
+                                        setStatus(projectStatus);
                                         // console.log("code:",parsedData.student.studentCode);
                                         await AsyncStorage.setItem('@isLeader', JSON.stringify(isCurrentUserLeader));
                                         await AsyncStorage.setItem('@memberid', JSON.stringify(memberid));
@@ -219,7 +250,7 @@ const MenuScreen = () => {
             await AsyncStorage.removeItem('@id');
             await GoogleSignin.revokeAccess(); // Optional: Revoke access to Google account
             await GoogleSignin.signOut();
-            // console.log('User signed out');
+            console.log('User signed out');
             router.replace('/Authen/LoginScreen'); // Ensure this route exists
         } catch (error) {
             console.log('Error logging out:', error);
@@ -250,15 +281,19 @@ const MenuScreen = () => {
         });
     };
     const handleProjectTask = () => {
+       
         if (!studentCode) {
             Alert.alert("You need a team to use this function");
             return;
         }
-        if(memberCount<4){
-            Alert.alert("You team need 4 or more member to use this function");
-            return;
-        }
-    
+        // if(memberCount<4){
+        //     Alert.alert("You team need 4 or more member to use this function");
+        //     return;
+        // }
+       if(status!=1){
+        Alert.alert("Your project is not in progress");
+        return;
+       }
         router.push({
             pathname: '../Tasks/TaskListScreen',
             params: {

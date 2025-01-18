@@ -10,7 +10,7 @@ type Event = {
     description: string;
     type: number;
     coverImageFile: string | null;
-    coverImageUrl: string | null;
+    coverImage: string | null;
     startDate: string;
     endDate: string;
     location: string;
@@ -298,8 +298,8 @@ const EventDetailScreen = () => {
             </View>
             <ScrollView contentContainerStyle={styles.scrollViewContent}>
                 <View style={styles.contentContainer}>
-                    {event.coverImageUrl && (
-                        <Image source={{ uri: event.coverImageUrl }} style={styles.eventImage} />
+                    {event.coverImage && (
+                        <Image source={{ uri: event.coverImage }} style={styles.eventImage} />
                     )}
                     <View style={styles.detailsContainer}>
                         <Text style={styles.eventTitle}>{event.title}</Text>

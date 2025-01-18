@@ -80,6 +80,10 @@ const TaskListScreen = () => {
             const storedIsLeader = await AsyncStorage.getItem('@isLeader');
             setIsStartDateTimeChosen(false);
             setIsEndDateTimeChosen(false);
+            setShowStartPicker(false);
+            setShowEndPicker(false);
+            setShowStartTimePicker(false);
+            setShowEndTimePicker(false);
             setIsLeader(storedIsLeader === 'true');
             if (!token) {
                 throw new Error('No token found');
